@@ -42,6 +42,8 @@ exports.createOrganization = async (req, res) => {
     const maxUsers = 500;
     const storageLimit = 100;
 
+    const formattedPhone = (phone && phone.trim() !== '' && phone.trim() !== '+91') ? phone.trim() : null;
+
     const insertQuery = `
       INSERT INTO users (
         full_name, email, phone, password_hash, role, organization_name, 
@@ -51,7 +53,7 @@ exports.createOrganization = async (req, res) => {
       RETURNING user_id, full_name, email, organization_name, district, state, license_status, created_at
     `;
     const values = [
-      full_name, email, phone || null, passwordHash, organization_name,
+      full_name, email, formattedPhone, passwordHash, organization_name,
       district || 'Kochi', state || 'Kerala', maxUsers, storageLimit
     ];
 
