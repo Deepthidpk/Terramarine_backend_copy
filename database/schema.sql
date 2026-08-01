@@ -152,14 +152,7 @@ CREATE TABLE users (
 
     -- Fisherman fields
     fishing_license_number VARCHAR(100) NULL,
-    boat_registration_number VARCHAR(100) NULL,
-
-    -- SaaS Subscription & Tenant fields (Municipal Authority / Client Organizations)
-    subscription_plan VARCHAR(50) DEFAULT 'Pro',
-    license_status VARCHAR(50) DEFAULT 'Active',
-    renewal_date TIMESTAMP DEFAULT NOW() + INTERVAL '1 year',
-    max_users_limit INT DEFAULT 500,
-    storage_limit_gb INT DEFAULT 100
+    boat_registration_number VARCHAR(100) NULL
 );
 
 -- 2. Pollution Reports

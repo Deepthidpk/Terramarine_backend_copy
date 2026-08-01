@@ -4,22 +4,27 @@ const db = require('../config/db');
 exports.createTask = async (req, res) => {
   const { report_id, campaign_id, assigned_worker, deadline } = req.body;
 
-  if (!report_id) {
+  if (!report_id || (typeof report_id === 'string' && report_id.trim() === '')) {
     return res.status(400).json({ error: 'Report ID is required.' });
   }
 
   try {
+    const cleanReportId = report_id.trim();
+    const cleanCampaignId = (campaign_id && typeof campaign_id === 'string' && campaign_id.trim() !== '') ? campaign_id.trim() : null;
+    const cleanWorker = (assigned_worker && typeof assigned_worker === 'string' && assigned_worker.trim() !== '') ? assigned_worker.trim() : null;
+    const cleanDeadline = (deadline && typeof deadline === 'string' && deadline.trim() !== '') ? deadline.trim() : null;
+
     // Check if report exists
-    const reportCheck = await db.query('SELECT status, title, before_image, image_url FROM pollution_reports WHERE report_id = $1', [report_id]);
+    const reportCheck = await db.query('SELECT status, title, image_url FROM pollution_reports WHERE report_id = $1', [cleanReportId]);
     if (reportCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Pollution report not found.' });
     }
 
     const report = reportCheck.rows[0];
-    const beforeImage = report.image_url;
+    const beforeImage = report.image_url || null;
 
     // Check if task already exists for this report
-    const taskCheck = await db.query('SELECT task_id FROM cleanup_tasks WHERE report_id = $1', [report_id]);
+    const taskCheck = await db.query('SELECT task_id FROM cleanup_tasks WHERE report_id = $1', [cleanReportId]);
     if (taskCheck.rows.length > 0) {
       return res.status(400).json({ error: 'A cleanup task is already assigned to this report.' });
     }
@@ -32,28 +37,32 @@ exports.createTask = async (req, res) => {
       RETURNING *
     `;
     const result = await db.query(insertQuery, [
-      report_id,
-      campaign_id || null,
-      assigned_worker || null,
-      deadline || null,
+      cleanReportId,
+      cleanCampaignId,
+      cleanWorker,
+      cleanDeadline,
       beforeImage
     ]);
 
     const newTask = result.rows[0];
 
     // If assigned to worker, send notification
-    if (assigned_worker) {
-      await db.query(
-        `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
-         VALUES ($1, 'New Task Assigned', 'You have been assigned the cleanup task: ' || $2, 'PollutionReport', $3)`,
-        [assigned_worker, report.title, report_id]
-      );
+    if (cleanWorker) {
+      try {
+        await db.query(
+          `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+           VALUES ($1, 'New Task Assigned', 'You have been assigned the cleanup task: ' || $2, 'PollutionReport', $3)`,
+          [cleanWorker, report.title, cleanReportId]
+        );
+      } catch (notifErr) {
+        console.error('Notification creation warning:', notifErr.message);
+      }
     }
 
     res.status(201).json({ task: newTask });
   } catch (error) {
     console.error('Create Task Error:', error);
-    res.status(500).json({ error: 'Server error creating cleanup task.' });
+    res.status(500).json({ error: error.message || 'Server error creating cleanup task.' });
   }
 };
 

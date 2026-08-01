@@ -69,7 +69,11 @@ exports.updateDistrictUserStatus = async (req, res) => {
     }
 
     const result = await db.query(
-      'UPDATE users SET status = $1, updated_at = NOW() WHERE user_id = $2 RETURNING user_id, full_name, email, role, status',
+      `UPDATE users 
+       SET status = $1::account_status, 
+           updated_at = NOW() 
+       WHERE user_id = $2 
+       RETURNING user_id, full_name, email, role, status`,
       [status, id]
     );
 

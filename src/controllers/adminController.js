@@ -10,8 +10,7 @@ exports.getOrganizations = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT user_id, full_name, email, phone, organization_name, district, state,
-             status, subscription_plan, license_status, renewal_date, 
-             max_users_limit, storage_limit_gb, created_at
+             status, created_at
       FROM users
       WHERE role = 'Authority'
       ORDER BY created_at DESC
@@ -38,23 +37,19 @@ exports.createOrganization = async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
-
-    const maxUsers = 500;
-    const storageLimit = 100;
-
     const formattedPhone = (phone && phone.trim() !== '' && phone.trim() !== '+91') ? phone.trim() : null;
 
     const insertQuery = `
       INSERT INTO users (
         full_name, email, phone, password_hash, role, organization_name, 
-        district, state, status, subscription_plan, license_status, max_users_limit, storage_limit_gb
+        district, state, status
       )
-      VALUES ($1, $2, $3, $4, 'Authority', $5, $6, $7, 'Active', 'Standard', 'Active', $8, $9)
-      RETURNING user_id, full_name, email, organization_name, district, state, license_status, created_at
+      VALUES ($1, $2, $3, $4, 'Authority', $5, $6, $7, 'Active')
+      RETURNING user_id, full_name, email, organization_name, district, state, status, created_at
     `;
     const values = [
       full_name, email, formattedPhone, passwordHash, organization_name,
-      district || 'Kochi', state || 'Kerala', maxUsers, storageLimit
+      district || 'Kochi', state || 'Kerala'
     ];
 
     const result = await db.query(insertQuery, values);
@@ -77,37 +72,49 @@ exports.createOrganization = async (req, res) => {
 };
 
 // =============================================================================
-// 2 & 5. MANAGE LICENSES & ACCOUNT STATUSES
+// 2 & 5. MANAGE ACCOUNT STATUSES
 // =============================================================================
 exports.updateSubscription = async (req, res) => {
   const { id } = req.params;
-  const { license_status, max_users_limit, storage_limit_gb } = req.body;
+  const status = req.body.status || req.body.license_status;
+
+  if (!status) {
+    return res.status(400).json({ error: 'Status is required.' });
+  }
 
   try {
-    const checkOrg = await db.query('SELECT user_id, organization_name FROM users WHERE user_id = $1 AND role = \'Authority\'', [id]);
+    const checkOrg = await db.query('SELECT user_id, organization_name, role FROM users WHERE user_id = $1', [id]);
     if (checkOrg.rows.length === 0) {
-      return res.status(404).json({ error: 'Municipal Authority Organization not found.' });
+      return res.status(404).json({ error: 'User or Organization account not found.' });
     }
 
     const result = await db.query(
       `UPDATE users 
-       SET license_status = COALESCE($1, license_status),
-           max_users_limit = COALESCE($2, max_users_limit),
-           storage_limit_gb = COALESCE($3, storage_limit_gb),
+       SET status = $1::account_status,
            updated_at = NOW()
-       WHERE user_id = $4 
-       RETURNING user_id, organization_name, email, license_status, max_users_limit, storage_limit_gb`,
-      [license_status, max_users_limit, storage_limit_gb, id]
+       WHERE user_id = $2 
+       RETURNING user_id, organization_name, email, status`,
+      [status, id]
     );
+
+    if (checkOrg.rows[0].organization_name) {
+      await db.query(
+        `UPDATE users
+         SET status = $1::account_status,
+             updated_at = NOW()
+         WHERE organization_name = $2 AND role != 'Admin'`,
+        [status, checkOrg.rows[0].organization_name]
+      );
+    }
 
     await db.query(
       `INSERT INTO system_audit_logs (user_id, user_email, action, details)
        VALUES ($1, $2, $3, $4)`,
-      [req.user.user_id, req.user.email, 'UPDATE_ORGANIZATION_STATUS', `Updated account status for ${checkOrg.rows[0].organization_name}`]
+      [req.user.user_id, req.user.email, 'UPDATE_ORGANIZATION_STATUS', `Updated account status to ${status} for ${checkOrg.rows[0].organization_name || id}`]
     );
 
     res.json({
-      message: 'Organization account status updated successfully.',
+      message: `Organization account status updated to ${status} successfully.`,
       organization: result.rows[0]
     });
   } catch (error) {
@@ -331,10 +338,10 @@ exports.getBackupHistory = async (req, res) => {
 exports.getSubscriptionReports = async (req, res) => {
   try {
     const statusBreakdown = await db.query(`
-      SELECT COALESCE(license_status, 'Active') as name, COUNT(*)::int as value
+      SELECT status as name, COUNT(*)::int as value
       FROM users
       WHERE role = 'Authority'
-      GROUP BY license_status
+      GROUP BY status
     `);
 
     const roleBreakdown = await db.query(`
@@ -395,7 +402,7 @@ exports.updateSupportTicket = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const { status, role } = req.query;
-    let query = `SELECT user_id, full_name, email, phone, role, organization_name, district, state, status, subscription_plan, license_status, created_at FROM users`;
+    let query = `SELECT user_id, full_name, email, phone, role, organization_name, district, state, status, created_at FROM users`;
     const params = [];
     const conditions = [];
     if (status) { conditions.push(`status = $${conditions.length + 1}`); params.push(status); }
@@ -415,9 +422,24 @@ exports.updateUserStatus = async (req, res) => {
   const { status } = req.body;
   try {
     const result = await db.query(
-      'UPDATE users SET status = $1, updated_at = NOW() WHERE user_id = $2 RETURNING user_id, full_name, email, role, status',
+      `UPDATE users 
+       SET status = $1::account_status, 
+           updated_at = NOW() 
+       WHERE user_id = $2 
+       RETURNING user_id, full_name, email, role, status`,
       [status, id]
     );
+
+    if (result.rows.length > 0 && result.rows[0].organization_name && (status === 'Suspended' || status === 'Active')) {
+      await db.query(
+        `UPDATE users
+         SET status = $1::account_status,
+             updated_at = NOW()
+         WHERE organization_name = $2 AND role != 'Admin'`,
+        [status, result.rows[0].organization_name]
+      );
+    }
+
     res.json({ message: `User status updated to ${status} successfully.`, user: result.rows[0] });
   } catch (error) {
     console.error('Update User Status Error:', error);
