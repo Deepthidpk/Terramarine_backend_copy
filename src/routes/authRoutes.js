@@ -66,6 +66,7 @@ router.post('/forgot-password', authController.forgotPassword);
 
 router.post('/reset-password', authController.resetPassword);
 router.get('/profile', authMiddleware, authController.getProfile);
+router.put('/profile', authMiddleware, authController.updateProfile);
 router.get('/test-email', authController.testEmail);
 router.post('/test-email', authController.testEmail);
 

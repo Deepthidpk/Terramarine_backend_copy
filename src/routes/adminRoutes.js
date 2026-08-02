@@ -5,6 +5,10 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 
 // Protect all routes in this router with System Admin authentication
 router.use(authMiddleware);
+
+// Document download route accessible by all authenticated users (Admin & Authority) for verifying documents
+router.get('/documents/:filename', adminController.downloadDocument);
+
 router.use(requireRole(['Admin']));
 
 // 1. Onboard & Manage Organizations (Municipal Authorities)

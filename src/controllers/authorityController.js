@@ -19,9 +19,9 @@ exports.getDistrictUsers = async (req, res) => {
     const params = [];
 
     // Filter by district if authority has a district set
-    if (authorityDistrict) {
-      params.push(authorityDistrict);
-      query += ` AND (district = $${params.length} OR district IS NULL)`;
+    if (authorityDistrict && authorityDistrict.trim() !== '') {
+      params.push(authorityDistrict.trim());
+      query += ` AND (LOWER(TRIM(district)) = LOWER(TRIM($${params.length})) OR district IS NULL OR TRIM(district) = '')`;
     }
 
     if (status) {

@@ -310,6 +310,8 @@ exports.login = async (req, res) => {
         user_id: user.user_id,
         full_name: user.full_name,
         email: user.email,
+        phone: user.phone,
+        address: user.address,
         role: user.role,
         organization_name: user.organization_name,
         profile_image: user.profile_image,
@@ -463,6 +465,8 @@ exports.googleLogin = async (req, res) => {
         user_id: user.user_id,
         full_name: user.full_name,
         email: user.email,
+        phone: user.phone,
+        address: user.address,
         role: user.role,
         organization_name: user.organization_name,
         profile_image: user.profile_image || picture,
@@ -722,6 +726,58 @@ exports.getProfile = async (req, res) => {
   } catch (error) {
     console.error('Get Profile Error:', error);
     res.status(500).json({ error: 'Server error retrieving profile.' });
+  }
+};
+
+// 6b. Update Profile
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const { full_name, phone, address, district, state, profile_image } = req.body;
+
+    if (!full_name || full_name.trim().length < 2) {
+      return res.status(400).json({ error: 'Full name must be at least 2 characters.' });
+    }
+
+    // Clean phone number: convert empty strings to null
+    const cleanPhone = phone && phone.trim() !== '' ? phone.trim() : null;
+
+    if (cleanPhone) {
+      const phoneCheck = await db.query(
+        'SELECT user_id FROM users WHERE phone = $1 AND user_id != $2',
+        [cleanPhone, userId]
+      );
+      if (phoneCheck.rows.length > 0) {
+        return res.status(400).json({ error: 'This phone number is already registered with another account.' });
+      }
+    }
+
+    const cleanAddress = address && address.trim() !== '' ? address.trim() : null;
+    const cleanDistrict = district && district.trim() !== '' ? district.trim() : null;
+    const cleanState = state && state.trim() !== '' ? state.trim() : null;
+
+    const result = await db.query(
+      `UPDATE users 
+       SET full_name = $1,
+           phone = $2,
+           address = $3,
+           district = $4,
+           state = $5,
+           profile_image = COALESCE(NULLIF($6, ''), profile_image)
+       WHERE user_id = $7
+       RETURNING user_id, full_name, email, phone, role, organization_name, profile_image, address, district, state, status, created_at`,
+      [full_name.trim(), cleanPhone, cleanAddress, cleanDistrict, cleanState, profile_image || '', userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const updatedUser = result.rows[0];
+    res.json({ message: 'Profile updated successfully!', user: updatedUser });
+  } catch (error) {
+    console.error('Update Profile Error:', error);
+    res.status(400).json({ error: error.message || 'Server error updating profile.' });
   }
 };
 
