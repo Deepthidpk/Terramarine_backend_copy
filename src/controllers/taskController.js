@@ -278,13 +278,17 @@ exports.updateTaskStatus = async (req, res) => {
       }
     }
 
-    // Notify Authority if worker completed the task
+    // Notify Municipal Authorities if worker completed the task
     if (status === 'Completed') {
+      const workerName = req.user.full_name || 'A volunteer';
+      const reportTitle = task.report_title || updatedTask.report_title || `Report #${task.report_id}`;
+      const completedMsg = `${workerName} has completed the cleanup task for "${reportTitle}". Clean-up completion proof has been uploaded and is ready for authority verification.`;
+
       await db.query(
         `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
-         SELECT user_id, 'Task Completed by Volunteer', 'Task for report has been submitted with clean-up proof.', 'PollutionReport', $1
-         FROM users WHERE role = 'Authority'`,
-        [task.report_id]
+         SELECT user_id, 'Cleanup Task Completed', $1, 'CleanupTask', $2
+         FROM users WHERE role IN ('Authority', 'Admin')`,
+        [completedMsg, id]
       );
     }
 

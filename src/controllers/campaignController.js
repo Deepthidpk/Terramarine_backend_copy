@@ -41,6 +41,15 @@ exports.createCampaign = async (req, res) => {
       [campaign_name, campaign_date, location, newCampaign.campaign_id]
     );
 
+    // Notify all Municipal Authorities & Admins when NGO/User creates Cleanup Campaign
+    const organizerName = req.user.organization_name || req.user.full_name || 'An organization';
+    await db.query(
+      `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+       SELECT user_id, 'New Cleanup Campaign Organized', $1 || ' organized a new cleanup campaign "' || $2 || '" at ' || $3 || ' scheduled for ' || $4, 'Campaign', $5
+       FROM users WHERE role IN ('Authority', 'Admin')`,
+      [organizerName, campaign_name, location, campaign_date, newCampaign.campaign_id]
+    );
+
     res.status(201).json({ campaign: newCampaign });
   } catch (error) {
     console.error('Create Campaign Error:', error);
@@ -165,12 +174,28 @@ exports.joinCampaign = async (req, res) => {
       [campaign_id, volunteer_id]
     );
 
-    // In-app Notification
+    // In-app Notification to Volunteer
     await db.query(
       `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
        VALUES ($1, 'Campaign Registration Confirmed', 'You have successfully registered for the cleanup campaign drive.', 'CleanupCampaign', $2)`,
       [volunteer_id, campaign_id]
     );
+
+    // Notify Municipal Authorities and Campaign Creator about volunteer joining
+    const volunteerName = req.user.full_name || 'A volunteer';
+    const campDetailsQuery = await db.query('SELECT campaign_name, location, campaign_date, created_by FROM cleanup_campaigns WHERE campaign_id = $1', [campaign_id]);
+    if (campDetailsQuery.rows.length > 0) {
+      const camp = campDetailsQuery.rows[0];
+      const campDateStr = new Date(camp.campaign_date).toLocaleDateString();
+      const joinMsg = `${volunteerName} has joined the cleanup campaign "${camp.campaign_name}" scheduled for ${campDateStr} at ${camp.location}.`;
+
+      await db.query(
+        `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+         SELECT user_id, 'Volunteer Joined Campaign', $1, 'Campaign', $2
+         FROM users WHERE role IN ('Authority', 'Admin') OR user_id = $3`,
+        [joinMsg, campaign_id, camp.created_by]
+      );
+    }
 
     // Dispatch Email Notification
     if (req.user && req.user.email) {

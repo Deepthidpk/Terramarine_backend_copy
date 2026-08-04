@@ -69,12 +69,22 @@ exports.createReport = async (req, res) => {
       [newReport.report_id, reported_by]
     );
 
-    // In-app Notification
+    // In-app Notification to Citizen Reporter
     const notifMessage = `Your pollution report "${newReport.title}" has been received and logged.`;
     await db.query(
       `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
        VALUES ($1, 'Report Submitted', $2, 'PollutionReport', $3)`,
       [reported_by, notifMessage, newReport.report_id]
+    );
+
+    // Notify all Municipal Authorities & Admins about the new pollution report
+    const categoryTag = (newReport.report_category || 'Pollution').toUpperCase();
+    const authorityMsg = `[${categoryTag}] New pollution report "${newReport.title}" (${newReport.severity || 'Medium'} Severity, ${newReport.waste_type || 'Waste'}) was submitted at ${newReport.location_name || 'coastal location'}.`;
+    await db.query(
+      `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+       SELECT user_id, 'New Pollution Report Submitted', $1, 'PollutionReport', $2
+       FROM users WHERE role IN ('Authority', 'Admin')`,
+      [authorityMsg, newReport.report_id]
     );
 
     // Dispatch Email Notification to Citizen
