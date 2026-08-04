@@ -69,7 +69,7 @@ exports.createTask = async (req, res) => {
 // Get Tasks (Filterable)
 exports.getTasks = async (req, res) => {
   const { role, user_id } = req.user;
-  const { status } = req.query;
+  const { status, type } = req.query;
 
   let queryText = `
     SELECT t.*, r.title as report_title, r.location_name, r.latitude, r.longitude, r.waste_type,
@@ -82,10 +82,16 @@ exports.getTasks = async (req, res) => {
   `;
   const params = [];
 
-  // Volunteers only see their own tasks
-  if (role === 'Volunteer') {
-    params.push(user_id);
-    queryText += ` AND t.assigned_worker = $${params.length}`;
+  if (role === 'Volunteer' || role === 'Citizen') {
+    if (type === 'available') {
+      queryText += ` AND t.assigned_worker IS NULL AND t.status = 'Pending'`;
+    } else if (type === 'my_tasks') {
+      params.push(user_id);
+      queryText += ` AND t.assigned_worker = $${params.length}`;
+    } else {
+      params.push(user_id);
+      queryText += ` AND (t.assigned_worker = $${params.length} OR t.assigned_worker IS NULL)`;
+    }
   }
 
   if (status) {
@@ -93,7 +99,7 @@ exports.getTasks = async (req, res) => {
     queryText += ` AND t.status = $${params.length}`;
   }
 
-  queryText += ' ORDER BY t.assigned_date DESC';
+  queryText += ' ORDER BY t.assigned_date DESC NULLS LAST, t.task_id DESC';
 
   try {
     const result = await db.query(queryText, params);
@@ -101,6 +107,51 @@ exports.getTasks = async (req, res) => {
   } catch (error) {
     console.error('Get Tasks Error:', error);
     res.status(500).json({ error: 'Server error retrieving tasks.' });
+  }
+};
+
+// Accept Cleanup Task (Volunteer)
+exports.acceptTask = async (req, res) => {
+  const { id } = req.params;
+  const user_id = req.user.user_id;
+
+  try {
+    const taskResult = await db.query('SELECT * FROM cleanup_tasks WHERE task_id = $1', [id]);
+    if (taskResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found.' });
+    }
+
+    const task = taskResult.rows[0];
+
+    if (task.assigned_worker && task.assigned_worker !== user_id) {
+      return res.status(400).json({ error: 'This task is already assigned to another volunteer.' });
+    }
+
+    if (task.status === 'Completed' || task.status === 'Verified') {
+      return res.status(400).json({ error: `Cannot accept task because it is already ${task.status}.` });
+    }
+
+    const updateQuery = `
+      UPDATE cleanup_tasks 
+      SET assigned_worker = $1,
+          assigned_date = COALESCE(assigned_date, NOW()),
+          status = 'In Progress'
+      WHERE task_id = $2
+      RETURNING *
+    `;
+    const result = await db.query(updateQuery, [user_id, id]);
+
+    // Send notification to volunteer
+    await db.query(
+      `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+       VALUES ($1, 'Task Accepted', 'You have accepted the cleanup task and it is now in progress.', 'PollutionReport', $2)`,
+      [user_id, task.report_id]
+    );
+
+    res.json({ message: 'Task accepted successfully!', task: result.rows[0] });
+  } catch (error) {
+    console.error('Accept Task Error:', error);
+    res.status(500).json({ error: 'Server error accepting task.' });
   }
 };
 

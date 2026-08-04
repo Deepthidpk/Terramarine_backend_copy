@@ -51,14 +51,17 @@ exports.createCampaign = async (req, res) => {
 // Get All Campaigns
 exports.getCampaigns = async (req, res) => {
   const { status } = req.query;
+  const user_id = req.user ? req.user.user_id : null;
+
   let queryText = `
     SELECT c.*, u.full_name as creator_name, u.organization_name,
       (SELECT COUNT(*)::int FROM campaign_volunteers cv WHERE cv.campaign_id = c.campaign_id) as volunteer_count
+      ${user_id ? `, EXISTS(SELECT 1 FROM campaign_volunteers cv2 WHERE cv2.campaign_id::text = c.campaign_id::text AND cv2.volunteer_id::text = $1::text) as is_joined` : ''}
     FROM cleanup_campaigns c
     JOIN users u ON c.created_by = u.user_id
     WHERE 1=1
   `;
-  const params = [];
+  const params = user_id ? [user_id] : [];
 
   if (status) {
     params.push(status);
@@ -280,5 +283,31 @@ exports.updateAttendance = async (req, res) => {
   } catch (error) {
     console.error('Update Attendance Error:', error);
     res.status(500).json({ error: 'Server error updating attendance.' });
+  }
+};
+
+// Get My Participation History & Certificates (Volunteer)
+exports.getMyHistory = async (req, res) => {
+  const volunteer_id = req.user.user_id;
+
+  try {
+    const historyQuery = `
+      SELECT cv.id as registration_id, cv.joined_date, cv.attendance, cv.certificate_status,
+             c.campaign_id, c.campaign_name, c.description, c.campaign_date, c.start_time, c.end_time, c.location, c.status as campaign_status,
+             u.full_name as creator_name, u.organization_name,
+             cert.certificate_id, cert.certificate_url, cert.issued_date
+      FROM campaign_volunteers cv
+      JOIN cleanup_campaigns c ON cv.campaign_id = c.campaign_id
+      JOIN users u ON c.created_by = u.user_id
+      LEFT JOIN certificates cert ON (cert.volunteer_id = cv.volunteer_id AND cert.campaign_id = cv.campaign_id)
+      WHERE cv.volunteer_id = $1
+      ORDER BY cv.joined_date DESC
+    `;
+    const historyResult = await db.query(historyQuery, [volunteer_id]);
+
+    res.json({ history: historyResult.rows });
+  } catch (error) {
+    console.error('Get My History Error:', error);
+    res.status(500).json({ error: 'Server error retrieving participation history.' });
   }
 };

@@ -5,6 +5,7 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 
 router.post('/', authMiddleware, requireRole(['NGO', 'Authority', 'Admin']), campaignController.createCampaign);
 router.get('/', authMiddleware, campaignController.getCampaigns);
+router.get('/my-history', authMiddleware, campaignController.getMyHistory);
 router.get('/:id', authMiddleware, campaignController.getCampaignById);
 router.post('/:id/join', authMiddleware, campaignController.joinCampaign);
 router.put('/:id/status', authMiddleware, requireRole(['NGO', 'Authority', 'Admin']), campaignController.updateCampaignStatus);

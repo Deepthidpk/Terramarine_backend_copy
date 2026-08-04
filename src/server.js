@@ -39,6 +39,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const authorityRoutes = require('./routes/authorityRoutes');
+const certificateRoutes = require('./routes/certificateRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
@@ -50,6 +51,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/authority', authorityRoutes);
+app.use('/api/certificates', certificateRoutes);
 
 // Dashboard stats endpoint (Authority & General Stats)
 app.get('/api/stats', authMiddleware, async (req, res) => {
