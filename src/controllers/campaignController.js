@@ -56,7 +56,7 @@ exports.getCampaigns = async (req, res) => {
   let queryText = `
     SELECT c.*, u.full_name as creator_name, u.organization_name,
       (SELECT COUNT(*)::int FROM campaign_volunteers cv WHERE cv.campaign_id = c.campaign_id) as volunteer_count
-      ${user_id ? `, EXISTS(SELECT 1 FROM campaign_volunteers cv2 WHERE cv2.campaign_id::text = c.campaign_id::text AND cv2.volunteer_id::text = $1::text) as is_joined` : ''}
+      ${user_id ? `, (SELECT COUNT(*)::int > 0 FROM campaign_volunteers cv2 WHERE cv2.campaign_id = c.campaign_id AND cv2.volunteer_id = $1) as is_joined` : ''}
     FROM cleanup_campaigns c
     JOIN users u ON c.created_by = u.user_id
     WHERE 1=1
@@ -156,7 +156,7 @@ exports.joinCampaign = async (req, res) => {
     // Check if already joined
     const checkResult = await db.query('SELECT id FROM campaign_volunteers WHERE campaign_id = $1 AND volunteer_id = $2', [campaign_id, volunteer_id]);
     if (checkResult.rows.length > 0) {
-      return res.status(400).json({ error: 'You have already registered for this campaign.' });
+      return res.status(200).json({ message: 'You have already registered for this campaign.', is_joined: true });
     }
 
     // Insert volunteer record
