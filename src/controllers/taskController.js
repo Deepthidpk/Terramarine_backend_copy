@@ -202,7 +202,7 @@ exports.updateTaskStatus = async (req, res) => {
     const task = taskResult.rows[0];
 
     // Auth validation
-    if (user_role === 'Volunteer' && task.assigned_worker !== user_id) {
+    if (['Volunteer', 'Citizen'].includes(user_role) && task.assigned_worker && task.assigned_worker !== user_id) {
       return res.status(403).json({ error: 'You are not assigned to this task.' });
     }
 
@@ -222,7 +222,8 @@ exports.updateTaskStatus = async (req, res) => {
       SET status = $1, 
           after_image = COALESCE($2, after_image), 
           completion_notes = COALESCE($3, completion_notes), 
-          completed_date = COALESCE($4, completed_date) 
+          completed_date = COALESCE($4, completed_date),
+          assigned_worker = COALESCE(assigned_worker, $6)
       WHERE task_id = $5 
       RETURNING *
     `;
@@ -231,7 +232,8 @@ exports.updateTaskStatus = async (req, res) => {
       afterImage || null, 
       completion_notes || null, 
       completedDate || null, 
-      id
+      id,
+      user_id
     ]);
 
     const updatedTask = result.rows[0];
