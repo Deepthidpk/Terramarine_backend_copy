@@ -40,6 +40,11 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const authorityRoutes = require('./routes/authorityRoutes');
 const certificateRoutes = require('./routes/certificateRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const initCategoryDb = require('./config/initCategoryDb');
+
+// Initialize category & waste type DB tables and schema alterations
+initCategoryDb();
 
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
@@ -52,6 +57,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/authority', authorityRoutes);
 app.use('/api/certificates', certificateRoutes);
+app.use('/api', categoryRoutes);
 
 // Dashboard stats endpoint (Authority & General Stats)
 app.get('/api/stats', authMiddleware, async (req, res) => {
