@@ -1,4 +1,6 @@
 const db = require('../config/db');
+const bcrypt = require('bcryptjs');
+const sendEmail = require('../utils/sendEmail');
 
 // 1. Get operational users (Volunteers, Researchers, NGOs, Citizens) within Authority's district
 exports.getDistrictUsers = async (req, res) => {
@@ -91,5 +93,116 @@ exports.updateDistrictUserStatus = async (req, res) => {
   } catch (error) {
     console.error('Update District User Status Error:', error);
     res.status(500).json({ error: 'Server error updating user status.' });
+  }
+};
+
+// 3. Add Cleanup Worker (Authority / Admin only)
+exports.addWorker = async (req, res) => {
+  const { full_name, email, phone } = req.body;
+  const authorityUser = req.user;
+
+  if (!full_name || !full_name.trim() || full_name.trim().length < 2) {
+    return res.status(400).json({ error: 'Full name is required (at least 2 characters).' });
+  }
+
+  if (!email || !email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email address is required.' });
+  }
+
+  if (!phone || !phone.trim() || !/^[0-9+\s-]{8,15}$/.test(phone.trim())) {
+    return res.status(400).json({ error: 'A valid phone number is required (8-15 digits).' });
+  }
+
+  const cleanName = full_name.trim();
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPhone = phone.trim();
+
+  try {
+    // Check if email already exists
+    const emailCheck = await db.query('SELECT user_id FROM users WHERE LOWER(email) = LOWER($1)', [cleanEmail]);
+    if (emailCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'A user with this email address already exists.' });
+    }
+
+    // Check if phone already exists (if provided)
+    if (cleanPhone) {
+      const phoneCheck = await db.query('SELECT user_id FROM users WHERE phone = $1', [cleanPhone]);
+      if (phoneCheck.rows.length > 0) {
+        return res.status(400).json({ error: 'A user with this phone number already exists.' });
+      }
+    }
+
+    // Auto-generate password e.g. Worker#5821
+    const tempPassword = `Worker#${Math.floor(1000 + Math.random() * 9000)}`;
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    const userDistrict = authorityUser.district || 'Kochi';
+    const userState = authorityUser.state || 'Kerala';
+
+    const insertQuery = `
+      INSERT INTO users (
+        full_name, email, phone, password_hash, role, status, district, state, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, 'Volunteer', 'Active', $5, $6, NOW(), NOW()
+      )
+      RETURNING user_id, full_name, email, phone, role, status, created_at
+    `;
+
+    const result = await db.query(insertQuery, [
+      cleanName,
+      cleanEmail,
+      cleanPhone,
+      passwordHash,
+      userDistrict,
+      userState
+    ]);
+
+    const newWorker = result.rows[0];
+
+    // Record audit log
+    await db.query(
+      `INSERT INTO system_audit_logs (user_id, user_email, action, details)
+       VALUES ($1, $2, $3, $4)`,
+      [authorityUser.user_id, authorityUser.email, 'AUTHORITY_ADD_WORKER', `Added cleanup worker ${cleanName} (${cleanEmail})`]
+    ).catch(err => console.error('Audit log error:', err.message));
+
+    // Frontend URL for link in email
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const loginLink = `${frontendUrl}/login`;
+
+    // Send Email to Worker
+    sendEmail({
+      to: cleanEmail,
+      subject: `Welcome to TerraMarine - Cleanup Worker Account Created`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 24px; color: #0f172a; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <h2 style="color: #0284c7; margin: 0;">🌊 TerraMarine Coastal Support</h2>
+            <p style="color: #64748b; font-size: 0.9rem; margin-top: 4px;">Official Coastal Cleanup Platform</p>
+          </div>
+          <p>Dear <strong>${cleanName}</strong>,</p>
+          <p>You have been registered as an official <strong>Cleanup Task Worker</strong> by Municipal Authorities.</p>
+          <div style="background: #f0f9ff; padding: 18px; border-radius: 10px; border-left: 4px solid #0284c7; margin: 20px 0;">
+            <h4 style="margin: 0 0 10px 0; color: #0369a1;">🔑 Your Login Credentials</h4>
+            <p style="margin: 6px 0;"><strong>Portal Login Link:</strong> <a href="${loginLink}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">${loginLink}</a></p>
+            <p style="margin: 6px 0;"><strong>Login Email:</strong> <span style="color: #0f172a; font-weight: 600;">${cleanEmail}</span></p>
+            <p style="margin: 6px 0;"><strong>Temporary Password:</strong> <span style="font-family: monospace; font-weight: bold; background: #e2e8f0; padding: 3px 8px; border-radius: 4px; color: #0f172a;">${tempPassword}</span></p>
+          </div>
+          <p>Log in using the credentials above to view assigned coastal cleanup tasks, upload completion proofs, and receive rewards.</p>
+          <div style="text-align: center; margin-top: 24px;">
+            <a href="${loginLink}" style="display: inline-block; background: #0284c7; color: #ffffff; padding: 12px 24px; border-radius: 8px; font-weight: bold; text-decoration: none;">Access Worker Dashboard</a>
+          </div>
+        </div>
+      `
+    }).catch(err => console.error('Email dispatch error when adding worker:', err.message));
+
+    res.status(201).json({
+      message: `Worker "${cleanName}" registered successfully! Login details sent to ${cleanEmail}.`,
+      worker: newWorker,
+      tempPassword
+    });
+  } catch (error) {
+    console.error('Add Worker Error:', error);
+    res.status(500).json({ error: 'Server error registering cleanup worker.' });
   }
 };
