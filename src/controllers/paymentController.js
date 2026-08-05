@@ -14,7 +14,7 @@ exports.getPayments = async (req, res) => {
   `;
   const params = [];
 
-  if (role === 'Volunteer') {
+  if (['Volunteer', 'Worker'].includes(role)) {
     params.push(user_id);
     queryText += ` AND p.volunteer_id = $${params.length}`;
   }

@@ -82,7 +82,7 @@ exports.getTasks = async (req, res) => {
   `;
   const params = [];
 
-  if (role === 'Volunteer' || role === 'Citizen') {
+  if (['Volunteer', 'Worker', 'Citizen'].includes(role)) {
     if (type === 'available') {
       queryText += ` AND t.assigned_worker IS NULL AND t.status = 'Pending'`;
     } else if (type === 'my_tasks') {
@@ -202,7 +202,7 @@ exports.updateTaskStatus = async (req, res) => {
     const task = taskResult.rows[0];
 
     // Auth validation
-    if (['Volunteer', 'Citizen'].includes(user_role) && task.assigned_worker && task.assigned_worker !== user_id) {
+    if (['Volunteer', 'Worker', 'Citizen'].includes(user_role) && task.assigned_worker && task.assigned_worker !== user_id) {
       return res.status(403).json({ error: 'You are not assigned to this task.' });
     }
 

@@ -15,6 +15,27 @@ const initCategoryDb = async () => {
       END $$;
     `);
 
+    // Alter users.role to VARCHAR(50) to allow 'Worker' role
+    await db.query(`
+      DO $$ 
+      BEGIN 
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'role' AND data_type = 'USER-DEFINED'
+        ) THEN 
+          ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(50) USING role::VARCHAR;
+        END IF;
+      END $$;
+    `);
+
+    // Update worker accounts (e.g. Deepak or worker emails) to role = 'Worker'
+    await db.query(`
+      UPDATE users 
+      SET role = 'Worker' 
+      WHERE (LOWER(full_name) LIKE '%deepak%' OR LOWER(email) LIKE '%deepak%' OR LOWER(email) LIKE '%worker%') 
+        AND role = 'Volunteer';
+    `);
+
     // 2. Create report_categories table
     await db.query(`
       CREATE TABLE IF NOT EXISTS report_categories (

@@ -143,7 +143,7 @@ exports.addWorker = async (req, res) => {
       INSERT INTO users (
         full_name, email, phone, password_hash, role, status, district, state, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, 'Volunteer', 'Active', $5, $6, NOW(), NOW()
+        $1, $2, $3, $4, 'Worker', 'Active', $5, $6, NOW(), NOW()
       )
       RETURNING user_id, full_name, email, phone, role, status, created_at
     `;
