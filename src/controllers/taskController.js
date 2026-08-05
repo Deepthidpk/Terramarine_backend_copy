@@ -253,25 +253,32 @@ exports.updateTaskStatus = async (req, res) => {
         [task.report_id, user_id]
       );
 
-      // Trigger volunteer payment if worker is assigned and campaign exists
-      if (task.assigned_worker && task.campaign_id) {
-        // Create payment entry of default amount e.g. 500.00
-        const paymentCheck = await db.query(
-          'SELECT payment_id FROM payments WHERE volunteer_id = $1 AND campaign_id = $2',
-          [task.assigned_worker, task.campaign_id]
-        );
+      // Trigger worker payment reward if worker is assigned
+      if (task.assigned_worker) {
+        let paymentCheck;
+        if (task.campaign_id) {
+          paymentCheck = await db.query(
+            'SELECT payment_id FROM payments WHERE volunteer_id = $1 AND campaign_id = $2',
+            [task.assigned_worker, task.campaign_id]
+          );
+        } else {
+          paymentCheck = await db.query(
+            'SELECT payment_id FROM payments WHERE volunteer_id = $1 AND campaign_id IS NULL',
+            [task.assigned_worker]
+          );
+        }
 
         if (paymentCheck.rows.length === 0) {
           await db.query(
             `INSERT INTO payments (volunteer_id, campaign_id, amount, payment_status)
              VALUES ($1, $2, 500.00, 'Pending')`,
-            [task.assigned_worker, task.campaign_id]
+            [task.assigned_worker, task.campaign_id || null]
           );
 
           // Notify worker
           await db.query(
             `INSERT INTO notifications (user_id, title, message)
-             VALUES ($1, 'Payment Pending', 'A clean-up reward of ₹500 is pending verification for your task.')`,
+             VALUES ($1, 'Payment Pending', 'A clean-up reward of ₹500 is pending payout verification for your task.')`,
             [task.assigned_worker]
           );
         }

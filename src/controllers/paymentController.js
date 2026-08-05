@@ -6,10 +6,11 @@ exports.getPayments = async (req, res) => {
 
   let queryText = `
     SELECT p.*, u.full_name as volunteer_name, u.email as volunteer_email,
-           c.campaign_name, c.location as campaign_location
+           COALESCE(c.campaign_name, 'Direct Municipal Cleanup Task') as campaign_name,
+           COALESCE(c.location, 'Coastal Incident Site') as campaign_location
     FROM payments p
     JOIN users u ON p.volunteer_id = u.user_id
-    JOIN cleanup_campaigns c ON p.campaign_id = c.campaign_id
+    LEFT JOIN cleanup_campaigns c ON p.campaign_id = c.campaign_id
     WHERE 1=1
   `;
   const params = [];
@@ -57,11 +58,11 @@ exports.processPayment = async (req, res) => {
     const result = await db.query(updateQuery, [payment_method, transaction_ref, id]);
     const updatedPayment = result.rows[0];
 
-    // Notify Volunteer
+    // Notify Worker / Volunteer
     await db.query(
-      `INSERT INTO notifications (user_id, title, message)
-       VALUES ($1, 'Payment Disbursed', 'Your reward of ₹' || $2 || ' has been processed via ' || $3 || '. Ref: ' || $4)`,
-      [updatedPayment.volunteer_id, updatedPayment.amount, payment_method, transaction_ref]
+      `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+       VALUES ($1, 'Payment Processed', 'Your clean-up reward payment of ₹' || $2 || ' has been processed successfully via ' || $3 || '. Ref: ' || $4, 'Payment', $5)`,
+      [updatedPayment.volunteer_id, updatedPayment.amount, payment_method, transaction_ref, id]
     );
 
     res.json({ payment: updatedPayment });
