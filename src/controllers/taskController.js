@@ -269,10 +269,22 @@ exports.updateTaskStatus = async (req, res) => {
     let afterImage = task.after_image;
     if (req.file) {
       afterImage = `/uploads/${req.file.filename}`;
+    } else if (req.files && req.files.length > 0) {
+      afterImage = `/uploads/${req.files[0].filename}`;
     }
 
     if (status === 'Verified' && !afterImage) {
       return res.status(400).json({ error: 'Cannot verify cleanup: Proof photo (After Image) must be uploaded before authority verification.' });
+    }
+
+    if (status === 'Completed' && req.body.completion_notes !== undefined) {
+      const notes = (req.body.completion_notes || '').trim();
+      if (!notes) {
+        return res.status(400).json({ error: 'Completion notes are required.' });
+      }
+      if (!/[a-zA-Z0-9]/.test(notes) || !/^[a-zA-Z0-9\s.,()'-]+$/.test(notes)) {
+        return res.status(400).json({ error: 'Special characters are not allowed. Please enter letters and numbers only.' });
+      }
     }
 
     let completedDate = task.completed_date;
