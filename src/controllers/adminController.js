@@ -402,13 +402,45 @@ exports.updateSupportTicket = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const { status, role } = req.query;
-    let query = `SELECT user_id, full_name, email, phone, role, organization_name, district, state, status, created_at FROM users`;
+    let query = `
+      SELECT u.user_id, u.full_name, u.email, u.phone, u.role, u.organization_name, u.district, u.state, u.status, u.created_at,
+             (
+               SELECT COUNT(*)::int
+               FROM cleanup_tasks t
+               WHERE t.status IN ('Pending', 'In Progress')
+                 AND t.assigned_worker ILIKE '%' || u.user_id::text || '%'
+             ) as active_tasks_count,
+             (
+               SELECT string_agg(DISTINCT date_val, ', ')
+               FROM (
+                 SELECT TO_CHAR(t.deadline, 'YYYY-MM-DD') as date_val
+                 FROM cleanup_tasks t
+                 WHERE t.status IN ('Pending', 'In Progress')
+                   AND t.assigned_worker ILIKE '%' || u.user_id::text || '%'
+                   AND t.deadline IS NOT NULL
+                 UNION
+                 SELECT TO_CHAR(t.assigned_date, 'YYYY-MM-DD') as date_val
+                 FROM cleanup_tasks t
+                 WHERE t.status IN ('Pending', 'In Progress')
+                   AND t.assigned_worker ILIKE '%' || u.user_id::text || '%'
+                   AND t.assigned_date IS NOT NULL
+               ) dates_sub
+             ) as busy_dates,
+             (
+               SELECT string_agg(DISTINCT r.title || ' (' || COALESCE(TO_CHAR(t.deadline, 'YYYY-MM-DD'), TO_CHAR(t.assigned_date, 'YYYY-MM-DD')) || ')', '; ')
+               FROM cleanup_tasks t
+               JOIN pollution_reports r ON t.report_id = r.report_id
+               WHERE t.status IN ('Pending', 'In Progress')
+                 AND t.assigned_worker ILIKE '%' || u.user_id::text || '%'
+             ) as active_task_names
+      FROM users u
+    `;
     const params = [];
     const conditions = [];
-    if (status) { conditions.push(`status = $${conditions.length + 1}`); params.push(status); }
-    if (role) { conditions.push(`role = $${conditions.length + 1}`); params.push(role); }
+    if (status) { conditions.push(`u.status = $${conditions.length + 1}`); params.push(status); }
+    if (role) { conditions.push(`u.role = $${conditions.length + 1}`); params.push(role); }
     if (conditions.length > 0) { query += ' WHERE ' + conditions.join(' AND '); }
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY u.created_at DESC';
     const result = await db.query(query, params);
     res.json({ users: result.rows });
   } catch (error) {

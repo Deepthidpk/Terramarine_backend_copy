@@ -38,6 +38,39 @@ exports.createTask = async (req, res) => {
       return res.status(400).json({ error: 'A cleanup task is already assigned to this report.' });
     }
 
+    // Worker availability check: verify worker is free on the target date
+    const targetDate = cleanDeadline || new Date().toISOString().slice(0, 10);
+    if (workerIds.length > 0) {
+      const busyWorkers = [];
+      for (const wId of workerIds) {
+        const busyCheck = await db.query(
+          `SELECT t.task_id, r.title, COALESCE(TO_CHAR(t.deadline, 'YYYY-MM-DD'), TO_CHAR(t.assigned_date, 'YYYY-MM-DD')) as task_date 
+           FROM cleanup_tasks t
+           JOIN pollution_reports r ON t.report_id = r.report_id
+           WHERE t.status IN ('Pending', 'In Progress')
+             AND t.assigned_worker ILIKE '%' || $1::text || '%'
+             AND (
+               (t.deadline IS NOT NULL AND TO_CHAR(t.deadline, 'YYYY-MM-DD') = $2)
+               OR (t.assigned_date IS NOT NULL AND TO_CHAR(t.assigned_date, 'YYYY-MM-DD') = $2)
+             )`,
+          [wId, targetDate]
+        );
+        if (busyCheck.rows.length > 0) {
+          const workerRes = await db.query('SELECT full_name FROM users WHERE user_id = $1', [wId]);
+          const workerName = workerRes.rows[0]?.full_name || 'Worker';
+          const busyTitles = busyCheck.rows.map(r => `"${r.title}"`).join(', ');
+          busyWorkers.push({ name: workerName, activeTask: busyTitles, date: targetDate });
+        }
+      }
+
+      if (busyWorkers.length > 0) {
+        const busyDetails = busyWorkers.map(w => `${w.name} is already assigned to "${w.activeTask}" on ${w.date}`).join('; ');
+        return res.status(400).json({ 
+          error: `Worker assignment blocked: ${busyDetails}. Workers cannot be assigned multiple tasks on the same date.` 
+        });
+      }
+    }
+
     // Insert task
     const insertQuery = `
       INSERT INTO cleanup_tasks 
