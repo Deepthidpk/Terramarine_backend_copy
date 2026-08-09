@@ -44,14 +44,22 @@ exports.createTask = async (req, res) => {
       const busyWorkers = [];
       for (const wId of workerIds) {
         const busyCheck = await db.query(
-          `SELECT t.task_id, r.title, COALESCE(TO_CHAR(t.deadline, 'YYYY-MM-DD'), TO_CHAR(t.assigned_date, 'YYYY-MM-DD')) as task_date 
+          `SELECT t.task_id, r.title, COALESCE(TO_CHAR(t.deadline AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD'), TO_CHAR(t.deadline, 'YYYY-MM-DD'), TO_CHAR(t.assigned_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD'), TO_CHAR(t.assigned_date, 'YYYY-MM-DD')) as task_date 
            FROM cleanup_tasks t
            JOIN pollution_reports r ON t.report_id = r.report_id
            WHERE t.status IN ('Pending', 'In Progress')
-             AND t.assigned_worker ILIKE '%' || $1::text || '%'
+             AND (t.assigned_worker = $1::text OR t.assigned_worker ILIKE '%' || $1::text || '%')
              AND (
-               (t.deadline IS NOT NULL AND TO_CHAR(t.deadline, 'YYYY-MM-DD') = $2)
-               OR (t.assigned_date IS NOT NULL AND TO_CHAR(t.assigned_date, 'YYYY-MM-DD') = $2)
+               (t.deadline IS NOT NULL AND (
+                 TO_CHAR(t.deadline, 'YYYY-MM-DD') = $2
+                 OR TO_CHAR(t.deadline AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') = $2
+                 OR TO_CHAR(t.deadline AT TIME ZONE 'UTC', 'YYYY-MM-DD') = $2
+               ))
+               OR (t.assigned_date IS NOT NULL AND (
+                 TO_CHAR(t.assigned_date, 'YYYY-MM-DD') = $2
+                 OR TO_CHAR(t.assigned_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') = $2
+                 OR TO_CHAR(t.assigned_date AT TIME ZONE 'UTC', 'YYYY-MM-DD') = $2
+               ))
              )`,
           [wId, targetDate]
         );

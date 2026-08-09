@@ -408,30 +408,54 @@ exports.getUsers = async (req, res) => {
                SELECT COUNT(*)::int
                FROM cleanup_tasks t
                WHERE t.status IN ('Pending', 'In Progress')
-                 AND t.assigned_worker ILIKE '%' || u.user_id::text || '%'
+                 AND (t.assigned_worker = u.user_id::text OR t.assigned_worker ILIKE '%' || u.user_id::text || '%')
              ) as active_tasks_count,
              (
-               SELECT string_agg(DISTINCT date_val, ', ')
+               SELECT string_agg(DISTINCT d_str, ', ')
                FROM (
-                 SELECT TO_CHAR(t.deadline, 'YYYY-MM-DD') as date_val
+                 SELECT TO_CHAR(t.deadline AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') as d_str
                  FROM cleanup_tasks t
                  WHERE t.status IN ('Pending', 'In Progress')
-                   AND t.assigned_worker ILIKE '%' || u.user_id::text || '%'
+                   AND (t.assigned_worker = u.user_id::text OR t.assigned_worker ILIKE '%' || u.user_id::text || '%')
                    AND t.deadline IS NOT NULL
                  UNION
-                 SELECT TO_CHAR(t.assigned_date, 'YYYY-MM-DD') as date_val
+                 SELECT TO_CHAR(t.deadline, 'YYYY-MM-DD') as d_str
                  FROM cleanup_tasks t
                  WHERE t.status IN ('Pending', 'In Progress')
-                   AND t.assigned_worker ILIKE '%' || u.user_id::text || '%'
+                   AND (t.assigned_worker = u.user_id::text OR t.assigned_worker ILIKE '%' || u.user_id::text || '%')
+                   AND t.deadline IS NOT NULL
+                 UNION
+                 SELECT TO_CHAR(t.assigned_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') as d_str
+                 FROM cleanup_tasks t
+                 WHERE t.status IN ('Pending', 'In Progress')
+                   AND (t.assigned_worker = u.user_id::text OR t.assigned_worker ILIKE '%' || u.user_id::text || '%')
                    AND t.assigned_date IS NOT NULL
+                 UNION
+                 SELECT TO_CHAR(t.assigned_date, 'YYYY-MM-DD') as d_str
+                 FROM cleanup_tasks t
+                 WHERE t.status IN ('Pending', 'In Progress')
+                   AND (t.assigned_worker = u.user_id::text OR t.assigned_worker ILIKE '%' || u.user_id::text || '%')
+                   AND t.assigned_date IS NOT NULL
+                 UNION
+                 SELECT TO_CHAR(t.assigned_date AT TIME ZONE 'UTC', 'YYYY-MM-DD') as d_str
+                 FROM cleanup_tasks t
+                 WHERE t.status IN ('Pending', 'In Progress')
+                   AND (t.assigned_worker = u.user_id::text OR t.assigned_worker ILIKE '%' || u.user_id::text || '%')
+                   AND t.assigned_date IS NOT NULL
+                 UNION
+                 SELECT TO_CHAR(t.deadline AT TIME ZONE 'UTC', 'YYYY-MM-DD') as d_str
+                 FROM cleanup_tasks t
+                 WHERE t.status IN ('Pending', 'In Progress')
+                   AND (t.assigned_worker = u.user_id::text OR t.assigned_worker ILIKE '%' || u.user_id::text || '%')
+                   AND t.deadline IS NOT NULL
                ) dates_sub
              ) as busy_dates,
              (
-               SELECT string_agg(DISTINCT r.title || ' (' || COALESCE(TO_CHAR(t.deadline, 'YYYY-MM-DD'), TO_CHAR(t.assigned_date, 'YYYY-MM-DD')) || ')', '; ')
+               SELECT string_agg(DISTINCT r.title || ' (' || COALESCE(TO_CHAR(t.deadline AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD'), TO_CHAR(t.deadline, 'YYYY-MM-DD'), TO_CHAR(t.assigned_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD'), TO_CHAR(t.assigned_date, 'YYYY-MM-DD')) || ')', '; ')
                FROM cleanup_tasks t
                JOIN pollution_reports r ON t.report_id = r.report_id
                WHERE t.status IN ('Pending', 'In Progress')
-                 AND t.assigned_worker ILIKE '%' || u.user_id::text || '%'
+                 AND (t.assigned_worker = u.user_id::text OR t.assigned_worker ILIKE '%' || u.user_id::text || '%')
              ) as active_task_names
       FROM users u
     `;
