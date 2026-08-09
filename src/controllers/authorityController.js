@@ -2,11 +2,10 @@ const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const sendEmail = require('../utils/sendEmail');
 
-// 1. Get operational users (Volunteers, Researchers, NGOs, Citizens) within Authority's district
+// 1. Get operational users (Volunteers, Researchers, NGOs, Citizens, Workers, Fishermen)
 exports.getDistrictUsers = async (req, res) => {
   try {
     const { status, role } = req.query;
-    const authorityDistrict = req.user.district; // From authMiddleware
 
     let query = `
       SELECT user_id, full_name, email, phone, role, organization_name, address, 
@@ -19,12 +18,6 @@ exports.getDistrictUsers = async (req, res) => {
       WHERE role NOT IN ('Admin', 'Authority')
     `;
     const params = [];
-
-    // Filter by district if authority has a district set
-    if (authorityDistrict && authorityDistrict.trim() !== '') {
-      params.push(authorityDistrict.trim());
-      query += ` AND (LOWER(TRIM(district)) = LOWER(TRIM($${params.length})) OR district IS NULL OR TRIM(district) = '')`;
-    }
 
     if (status) {
       params.push(status);
@@ -101,16 +94,17 @@ exports.addWorker = async (req, res) => {
   const { full_name, email, phone } = req.body;
   const authorityUser = req.user;
 
-  if (!full_name || !full_name.trim() || full_name.trim().length < 2) {
-    return res.status(400).json({ error: 'Full name is required (at least 2 characters).' });
+  if (!full_name || !full_name.trim() || full_name.trim().length < 3 || full_name.trim().length > 50 || !/^[a-zA-Z\s.'-]+$/.test(full_name.trim())) {
+    return res.status(400).json({ error: 'Worker full name must be 3-50 letters without numbers or special symbols.' });
   }
 
-  if (!email || !email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-    return res.status(400).json({ error: 'A valid email address is required.' });
+  if (!email || !email.trim() || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email address is required (e.g. worker@example.com).' });
   }
 
-  if (!phone || !phone.trim() || !/^[0-9+\s-]{8,15}$/.test(phone.trim())) {
-    return res.status(400).json({ error: 'A valid phone number is required (8-15 digits).' });
+  const digitsOnly = (phone || '').replace(/\D/g, '');
+  if (!phone || !phone.trim() || digitsOnly.length < 10 || digitsOnly.length > 13) {
+    return res.status(400).json({ error: 'A valid 10-digit mobile phone number is required.' });
   }
 
   const cleanName = full_name.trim();

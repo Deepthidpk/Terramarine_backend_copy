@@ -122,7 +122,13 @@ exports.getReports = async (req, res) => {
   const { status, category, severity } = req.query;
   
   let queryText = `
-    SELECT r.*, u.full_name as reporter_name, u.role as reporter_role
+    SELECT r.*, u.full_name as reporter_name, u.role as reporter_role,
+      (
+        SELECT string_agg(u2.full_name, ', ')
+        FROM cleanup_tasks t
+        JOIN users u2 ON u2.user_id::text = ANY(string_to_array(t.assigned_worker, ','))
+        WHERE t.report_id = r.report_id
+      ) as assigned_workers
     FROM pollution_reports r
     JOIN users u ON r.reported_by = u.user_id
     WHERE 1=1
@@ -132,6 +138,8 @@ exports.getReports = async (req, res) => {
   if (status) {
     params.push(status);
     queryText += ` AND r.status = $${params.length}`;
+  } else if (req.query.include_completed !== 'true') {
+    queryText += ` AND r.status != 'Completed'`;
   }
   if (category) {
     params.push(category);

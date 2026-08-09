@@ -57,8 +57,43 @@ exports.createCampaign = async (req, res) => {
   }
 };
 
+const autoUpdateCampaignStatuses = async () => {
+  try {
+    // 1. Mark campaigns as Completed if campaign_date is in past, or today and end_time (or start_time + 4hrs) has passed
+    await db.query(`
+      UPDATE cleanup_campaigns 
+      SET status = 'Completed' 
+      WHERE status IN ('Upcoming', 'Ongoing') 
+        AND (
+          campaign_date < CURRENT_DATE 
+          OR (
+            campaign_date = CURRENT_DATE 
+            AND (
+              (end_time IS NOT NULL AND end_time <= CURRENT_TIME)
+              OR (end_time IS NULL AND start_time IS NOT NULL AND (start_time + INTERVAL '4 hours') <= CURRENT_TIME)
+            )
+          )
+        )
+    `);
+
+    // 2. Mark campaigns as Ongoing if today and start_time <= CURRENT_TIME and end_time > CURRENT_TIME
+    await db.query(`
+      UPDATE cleanup_campaigns 
+      SET status = 'Ongoing' 
+      WHERE status = 'Upcoming' 
+        AND campaign_date = CURRENT_DATE 
+        AND start_time IS NOT NULL AND start_time <= CURRENT_TIME 
+        AND (end_time IS NULL OR end_time > CURRENT_TIME)
+    `);
+  } catch (err) {
+    console.error('Auto update campaign statuses error:', err);
+  }
+};
+
 // Get All Campaigns
 exports.getCampaigns = async (req, res) => {
+  await autoUpdateCampaignStatuses();
+
   const { status } = req.query;
   const user_id = req.user ? req.user.user_id : null;
 
@@ -90,6 +125,8 @@ exports.getCampaigns = async (req, res) => {
 
 // Get Campaign Details & Volunteers
 exports.getCampaignById = async (req, res) => {
+  await autoUpdateCampaignStatuses();
+
   const { id } = req.params;
 
   try {
@@ -259,6 +296,26 @@ exports.updateAttendance = async (req, res) => {
   }
 
   try {
+    // If certificate is being issued, validate preconditions
+    if (certificate_status === true) {
+      const campRes = await db.query('SELECT campaign_date, status FROM cleanup_campaigns WHERE campaign_id = $1', [id]);
+      if (campRes.rows.length > 0) {
+        const camp = campRes.rows[0];
+        const campDateStr = new Date(camp.campaign_date).toISOString().slice(0, 10);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const isEnded = camp.status === 'Completed' || campDateStr < todayStr;
+        if (!isEnded) {
+          return res.status(400).json({ error: 'Certificates can only be issued after the campaign has ended.' });
+        }
+      }
+
+      const volRegCheck = await db.query('SELECT attendance FROM campaign_volunteers WHERE campaign_id = $1 AND volunteer_id = $2', [id, volunteer_id]);
+      const isAttended = attendance !== undefined ? attendance : (volRegCheck.rows[0]?.attendance);
+      if (!isAttended) {
+        return res.status(400).json({ error: 'Volunteer must be marked as attended before issuing a certificate.' });
+      }
+    }
+
     // Update campaign volunteer entry
     const updateQuery = `
       UPDATE campaign_volunteers 
@@ -313,6 +370,8 @@ exports.updateAttendance = async (req, res) => {
 
 // Get My Participation History & Certificates (Volunteer)
 exports.getMyHistory = async (req, res) => {
+  await autoUpdateCampaignStatuses();
+
   const volunteer_id = req.user.user_id;
 
   try {
