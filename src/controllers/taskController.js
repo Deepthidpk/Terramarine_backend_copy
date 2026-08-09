@@ -271,6 +271,10 @@ exports.updateTaskStatus = async (req, res) => {
       afterImage = `/uploads/${req.file.filename}`;
     }
 
+    if (status === 'Verified' && !afterImage) {
+      return res.status(400).json({ error: 'Cannot verify cleanup: Proof photo (After Image) must be uploaded before authority verification.' });
+    }
+
     let completedDate = task.completed_date;
     if (status === 'Completed' && task.status !== 'Completed') {
       completedDate = new Date();
