@@ -11,5 +11,6 @@ router.post('/:id/join', authMiddleware, campaignController.joinCampaign);
 router.put('/:id/status', authMiddleware, requireRole(['NGO', 'Authority', 'Admin']), campaignController.updateCampaignStatus);
 router.put('/:id/attendance', authMiddleware, requireRole(['NGO', 'Authority', 'Admin']), campaignController.updateAttendance);
 router.put('/:id/volunteers/:volunteer_id/status', authMiddleware, requireRole(['NGO', 'Authority', 'Admin']), campaignController.updateVolunteerStatus);
+router.post('/assign-volunteer', authMiddleware, requireRole(['NGO']), campaignController.assignVolunteer);
 
 module.exports = router;

@@ -1,4 +1,4 @@
-const db = require('../config/db');
+﻿const db = require('../config/db');
 const sendEmail = require('../utils/sendEmail');
 
 // Create Campaign (NGO or Authority/Admin only)
@@ -250,7 +250,7 @@ exports.joinCampaign = async (req, res) => {
         subject: `TerraMarine - Campaign Registration Confirmed`,
         html: `
           <div style="font-family: Arial, sans-serif; padding: 20px; color: #0f172a;">
-            <h2 style="color: #0284c7;">🌊 TerraMarine Cleanup Registration</h2>
+            <h2 style="color: #0284c7;">ðŸŒŠ TerraMarine Cleanup Registration</h2>
             <p>Dear <strong>${req.user.full_name}</strong>,</p>
             <p>Your registration for the coastal cleanup drive has been confirmed!</p>
             <p>Thank you for contributing to coastal ecosystem restoration.</p>
@@ -433,7 +433,106 @@ exports.getMyHistory = async (req, res) => {
 
     res.json({ history: historyResult.rows });
   } catch (error) {
-    console.error('Get My History Error:', error);
-    res.status(500).json({ error: 'Server error retrieving participation history.' });
+    console.error('My History Error:', error);
+    res.status(500).json({ error: 'Server error fetching history.' });
+  }
+};
+
+// Assign Volunteer (NGO only)
+exports.assignVolunteer = async (req, res) => {
+  const { full_name, email, phone } = req.body;
+  const ngoUser = req.user;
+
+  if (!full_name || !full_name.trim() || full_name.trim().length < 3 || full_name.trim().length > 50 || !/^[a-zA-Z0-9\s]+$/.test(full_name.trim())) {
+    return res.status(400).json({ error: 'Volunteer full name must be 3-50 characters and can only contain letters, digits, and spaces.' });
+  }
+
+  if (!email || !email.trim() || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email address is required (e.g. volunteer@example.com).' });
+  }
+
+  const cleanPhone = (phone || '').trim();
+  if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+    return res.status(400).json({ error: 'Phone number must be exactly 10 digits and start with 6, 7, 8, or 9.' });
+  }
+
+  const cleanName = full_name.trim();
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const emailCheck = await db.query('SELECT user_id FROM users WHERE LOWER(email) = LOWER($1)', [cleanEmail]);
+    if (emailCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'A user with this email address already exists.' });
+    }
+
+    const phoneCheck = await db.query('SELECT user_id FROM users WHERE phone = $1', [cleanPhone]);
+    if (phoneCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'A user with this phone number already exists.' });
+    }
+
+    const bcrypt = require('bcryptjs');
+    const tempPassword = `Volunteer#${Math.floor(1000 + Math.random() * 9000)}`;
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    const userDistrict = ngoUser.district || 'Kochi';
+    const userState = ngoUser.state || 'Kerala';
+
+    const insertQuery = `
+      INSERT INTO users (
+        full_name, email, phone, password_hash, role, status, district, state, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, 'Volunteer', 'Active', $5, $6, NOW(), NOW()
+      )
+      RETURNING user_id, full_name, email, phone, role, status, created_at
+    `;
+
+    const result = await db.query(insertQuery, [
+      cleanName,
+      cleanEmail,
+      cleanPhone,
+      passwordHash,
+      userDistrict,
+      userState
+    ]);
+
+    const newVolunteer = result.rows[0];
+
+    const sendEmail = require('../utils/sendEmail');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const loginLink = `${frontendUrl}/login`;
+
+    sendEmail({
+      to: cleanEmail,
+      subject: `Welcome to TerraMarine - Volunteer Account Created`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 24px; color: #0f172a; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <h2 style="color: #0284c7; margin: 0;">ðŸŒŠ TerraMarine Coastal Support</h2>
+            <p style="color: #64748b; font-size: 0.9rem; margin-top: 4px;">Official Coastal Cleanup Platform</p>
+          </div>
+          <p>Dear <strong>${cleanName}</strong>,</p>
+          <p>You have been registered as a <strong>Volunteer</strong> by an NGO on the TerraMarine platform.</p>
+          <div style="background: #f0f9ff; padding: 18px; border-radius: 10px; border-left: 4px solid #0284c7; margin: 20px 0;">
+            <h4 style="margin: 0 0 10px 0; color: #0369a1;">ðŸ”‘ Your Login Credentials</h4>
+            <p style="margin: 6px 0;"><strong>Portal Login Link:</strong> <a href="${loginLink}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">${loginLink}</a></p>
+            <p style="margin: 6px 0;"><strong>Login Email:</strong> <span style="color: #0f172a; font-weight: 600;">${cleanEmail}</span></p>
+            <p style="margin: 6px 0;"><strong>Temporary Password:</strong> <span style="font-family: monospace; font-weight: bold; background: #e2e8f0; padding: 3px 8px; border-radius: 4px; color: #0f172a;">${tempPassword}</span></p>
+          </div>
+          <p>Log in using the credentials above to explore upcoming cleanup campaigns and contribute to a cleaner environment.</p>
+          <div style="text-align: center; margin-top: 24px;">
+            <a href="${loginLink}" style="display: inline-block; background: #0284c7; color: #ffffff; padding: 12px 24px; border-radius: 8px; font-weight: bold; text-decoration: none;">Access Volunteer Dashboard</a>
+          </div>
+        </div>
+      `
+    }).catch(err => console.error('Email dispatch error when adding volunteer:', err.message));
+
+    res.status(201).json({
+      message: `Volunteer "${cleanName}" registered successfully! Login details sent to ${cleanEmail}.`,
+      volunteer: newVolunteer,
+      tempPassword
+    });
+  } catch (error) {
+    console.error('Add Volunteer Error:', error);
+    res.status(500).json({ error: 'Server error registering volunteer.' });
   }
 };
