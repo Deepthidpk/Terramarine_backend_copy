@@ -5,5 +5,6 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 
 router.get('/', authMiddleware, paymentController.getPayments);
 router.put('/:id/pay', authMiddleware, requireRole(['Authority', 'Admin']), paymentController.processPayment);
+router.post('/:id/create-order', authMiddleware, requireRole(['Authority', 'Admin']), paymentController.createOrder);
 
 module.exports = router;

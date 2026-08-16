@@ -331,32 +331,30 @@ exports.updateTaskStatus = async (req, res) => {
 
       // Trigger worker payment reward if worker is assigned
       if (task.assigned_worker) {
-        let paymentCheck;
-        if (task.campaign_id) {
-          paymentCheck = await db.query(
-            'SELECT payment_id FROM payments WHERE volunteer_id = $1 AND campaign_id = $2',
-            [task.assigned_worker, task.campaign_id]
-          );
-        } else {
-          paymentCheck = await db.query(
-            'SELECT payment_id FROM payments WHERE volunteer_id = $1 AND campaign_id IS NULL',
-            [task.assigned_worker]
-          );
-        }
+        const workerIds = task.assigned_worker.split(',').map(id => id.trim()).filter(Boolean);
+        for (const wId of workerIds) {
+          const userCheck = await db.query('SELECT user_id FROM users WHERE user_id::text = $1', [wId]);
+          if (userCheck.rows.length === 0) continue;
 
-        if (paymentCheck.rows.length === 0) {
-          await db.query(
-            `INSERT INTO payments (volunteer_id, campaign_id, amount, payment_status)
-             VALUES ($1, $2, 500.00, 'Pending')`,
-            [task.assigned_worker, task.campaign_id || null]
+          const paymentCheck = await db.query(
+            'SELECT payment_id FROM payments WHERE volunteer_id::text = $1 AND (task_id = $2 OR (task_id IS NULL AND campaign_id IS NOT NULL AND campaign_id = $3))',
+            [wId, task.task_id, task.campaign_id]
           );
 
-          // Notify worker
-          await db.query(
-            `INSERT INTO notifications (user_id, title, message)
-             VALUES ($1, 'Payment Pending', 'A clean-up reward of ₹500 is pending payout verification for your task.')`,
-            [task.assigned_worker]
-          );
+          if (paymentCheck.rows.length === 0) {
+            await db.query(
+              `INSERT INTO payments (volunteer_id, campaign_id, task_id, amount, payment_status)
+               VALUES ($1, $2, $3, 500.00, 'Pending')`,
+              [wId, task.campaign_id || null, task.task_id]
+            );
+
+            // Notify worker
+            await db.query(
+              `INSERT INTO notifications (user_id, title, message)
+               VALUES ($1, 'Payment Pending', 'A clean-up reward of ₹500 is pending payout verification for your task.')`,
+              [wId]
+            );
+          }
         }
       }
     }
