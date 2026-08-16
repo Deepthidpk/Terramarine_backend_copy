@@ -3,7 +3,7 @@ const sendEmail = require('../utils/sendEmail');
 
 // Create Campaign (NGO or Authority/Admin only)
 exports.createCampaign = async (req, res) => {
-  const { campaign_name, description, campaign_date, start_time, end_time, location, latitude, longitude, maximum_volunteers } = req.body;
+  const { campaign_name, description, campaign_date, start_time, end_time, location, latitude, longitude, maximum_volunteers, visibility } = req.body;
   const created_by = req.user.user_id;
 
   if (!campaign_name || !campaign_date || !location) {
@@ -13,8 +13,8 @@ exports.createCampaign = async (req, res) => {
   try {
     const insertQuery = `
       INSERT INTO cleanup_campaigns 
-      (created_by, campaign_name, description, campaign_date, start_time, end_time, location, latitude, longitude, maximum_volunteers, status) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Upcoming') 
+      (created_by, campaign_name, description, campaign_date, start_time, end_time, location, latitude, longitude, maximum_volunteers, visibility, status) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Upcoming') 
       RETURNING *
     `;
     const values = [
@@ -27,7 +27,8 @@ exports.createCampaign = async (req, res) => {
       location,
       latitude ? parseFloat(latitude) : null,
       longitude ? parseFloat(longitude) : null,
-      maximum_volunteers ? parseInt(maximum_volunteers) : null
+      maximum_volunteers ? parseInt(maximum_volunteers) : null,
+      visibility || 'Public'
     ];
 
     const result = await db.query(insertQuery, values);
@@ -99,8 +100,8 @@ exports.getCampaigns = async (req, res) => {
 
   let queryText = `
     SELECT c.*, u.full_name as creator_name, u.organization_name,
-      (SELECT COUNT(*)::int FROM campaign_volunteers cv WHERE cv.campaign_id = c.campaign_id) as volunteer_count
-      ${user_id ? `, EXISTS(SELECT 1 FROM campaign_volunteers cv2 WHERE cv2.campaign_id = c.campaign_id AND cv2.volunteer_id = $1) as is_joined` : ''}
+      (SELECT COUNT(*)::int FROM campaign_volunteers cv WHERE cv.campaign_id = c.campaign_id AND cv.registration_status = 'Approved') as volunteer_count
+      ${user_id ? `, EXISTS(SELECT 1 FROM campaign_volunteers cv2 WHERE cv2.campaign_id = c.campaign_id AND cv2.volunteer_id = $1) as is_joined, (SELECT registration_status FROM campaign_volunteers cv3 WHERE cv3.campaign_id = c.campaign_id AND cv3.volunteer_id = $1 LIMIT 1) as registration_status` : ''}
     FROM cleanup_campaigns c
     JOIN users u ON c.created_by = u.user_id
     WHERE 1=1
@@ -110,6 +111,12 @@ exports.getCampaigns = async (req, res) => {
   if (status) {
     params.push(status);
     queryText += ` AND c.status = $${params.length}`;
+  }
+
+  if (user_id) {
+    queryText += ` AND (c.visibility = 'Public' OR c.created_by = $1 OR EXISTS(SELECT 1 FROM campaign_volunteers cv4 WHERE cv4.campaign_id = c.campaign_id AND cv4.volunteer_id = $1))`;
+  } else {
+    queryText += ` AND c.visibility = 'Public'`;
   }
 
   queryText += ' ORDER BY c.campaign_date DESC';
@@ -144,7 +151,7 @@ exports.getCampaignById = async (req, res) => {
 
     // Fetch registered volunteers
     const volunteersQuery = `
-      SELECT cv.id as registration_id, cv.joined_date, cv.attendance, cv.certificate_status,
+      SELECT cv.id as registration_id, cv.joined_date, cv.attendance, cv.certificate_status, cv.registration_status,
         u.user_id, u.full_name, u.email, u.phone, u.profile_image
       FROM campaign_volunteers cv
       JOIN users u ON cv.volunteer_id = u.user_id
@@ -180,7 +187,7 @@ exports.joinCampaign = async (req, res) => {
 
   try {
     // Check if campaign exists and status is upcoming/ongoing
-    const campaignResult = await db.query('SELECT status, maximum_volunteers FROM cleanup_campaigns WHERE campaign_id = $1', [campaign_id]);
+    const campaignResult = await db.query('SELECT status, maximum_volunteers, visibility FROM cleanup_campaigns WHERE campaign_id = $1', [campaign_id]);
     if (campaignResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campaign not found.' });
     }
@@ -206,16 +213,18 @@ exports.joinCampaign = async (req, res) => {
     }
 
     // Insert volunteer record
+    const regStatus = campaign.visibility === 'Private' ? 'Pending' : 'Approved';
     await db.query(
-      'INSERT INTO campaign_volunteers (campaign_id, volunteer_id) VALUES ($1, $2)',
-      [campaign_id, volunteer_id]
+      'INSERT INTO campaign_volunteers (campaign_id, volunteer_id, registration_status) VALUES ($1, $2, $3)',
+      [campaign_id, volunteer_id, regStatus]
     );
 
     // In-app Notification to Volunteer
+    const notifMsg = campaign.visibility === 'Private' ? 'Your request to join the campaign is pending approval.' : 'You have successfully registered for the cleanup campaign drive.';
     await db.query(
       `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
-       VALUES ($1, 'Campaign Registration Confirmed', 'You have successfully registered for the cleanup campaign drive.', 'CleanupCampaign', $2)`,
-      [volunteer_id, campaign_id]
+       VALUES ($1, 'Campaign Registration', $2, 'CleanupCampaign', $3)`,
+      [volunteer_id, notifMsg, campaign_id]
     );
 
     // Notify Municipal Authorities and Campaign Creator about volunteer joining
@@ -250,10 +259,43 @@ exports.joinCampaign = async (req, res) => {
       }).catch(err => console.error('Email error:', err.message));
     }
 
-    res.status(201).json({ message: 'Successfully registered for campaign.' });
+    res.status(201).json({ message: campaign.visibility === 'Private' ? 'Successfully requested to join campaign.' : 'Successfully registered for campaign.' });
   } catch (error) {
     console.error('Join Campaign Error:', error);
     res.status(500).json({ error: 'Server error registering for campaign.' });
+  }
+};
+
+// Update Volunteer Status (Approve/Reject)
+exports.updateVolunteerStatus = async (req, res) => {
+  const { id, volunteer_id } = req.params;
+  const { status } = req.body;
+
+  if (!['Approved', 'Rejected'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status.' });
+  }
+
+  try {
+    const updateResult = await db.query(
+      'UPDATE campaign_volunteers SET registration_status = $1 WHERE campaign_id = $2 AND volunteer_id = $3 RETURNING *',
+      [status, id, volunteer_id]
+    );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Volunteer registration not found.' });
+    }
+
+    // send notification to volunteer
+    await db.query(
+      `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+       VALUES ($1, $2, $3, 'Campaign', $4)`,
+      [volunteer_id, `Campaign Request ${status}`, `Your request to join the campaign has been ${status.toLowerCase()}.`, id]
+    );
+
+    res.json({ message: `Volunteer ${status.toLowerCase()} successfully.` });
+  } catch (error) {
+    console.error('Update Volunteer Status Error:', error);
+    res.status(500).json({ error: 'Server error updating volunteer status.' });
   }
 };
 
