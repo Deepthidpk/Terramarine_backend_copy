@@ -147,22 +147,21 @@ exports.addWorker = async (req, res) => {
   const { full_name, email, phone } = req.body;
   const authorityUser = req.user;
 
-  if (!full_name || !full_name.trim() || full_name.trim().length < 3 || full_name.trim().length > 50 || !/^[a-zA-Z\s.'-]+$/.test(full_name.trim())) {
-    return res.status(400).json({ error: 'Worker full name must be 3-50 letters without numbers or special symbols.' });
+  if (!full_name || !full_name.trim() || full_name.trim().length < 3 || full_name.trim().length > 50 || !/^[a-zA-Z0-9\s]+$/.test(full_name.trim())) {
+    return res.status(400).json({ error: 'Worker full name must be 3-50 characters and can only contain letters, digits, and spaces.' });
   }
 
   if (!email || !email.trim() || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email.trim())) {
     return res.status(400).json({ error: 'A valid email address is required (e.g. worker@example.com).' });
   }
 
-  const digitsOnly = (phone || '').replace(/\D/g, '');
-  if (!phone || !phone.trim() || digitsOnly.length < 10 || digitsOnly.length > 13) {
-    return res.status(400).json({ error: 'A valid 10-digit mobile phone number is required.' });
+  const cleanPhone = (phone || '').trim();
+  if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+    return res.status(400).json({ error: 'Phone number must be exactly 10 digits and start with 6, 7, 8, or 9.' });
   }
 
   const cleanName = full_name.trim();
   const cleanEmail = email.trim().toLowerCase();
-  const cleanPhone = phone.trim();
 
   try {
     // Check if email already exists
@@ -224,13 +223,14 @@ exports.addWorker = async (req, res) => {
       html: `
         <div style="font-family: Arial, sans-serif; padding: 24px; color: #0f172a; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
           <div style="text-align: center; margin-bottom: 20px;">
-            <h2 style="color: #0284c7; margin: 0;">🌊 TerraMarine Coastal Support</h2>
+            <img src="${frontendUrl}/images/whale_logo_icon.png" alt="TerraMarine Logo" height="48" style="margin-bottom: 12px;" />
+            <h2 style="color: #0284c7; margin: 0;">TerraMarine Coastal Support</h2>
             <p style="color: #64748b; font-size: 0.9rem; margin-top: 4px;">Official Coastal Cleanup Platform</p>
           </div>
           <p>Dear <strong>${cleanName}</strong>,</p>
           <p>You have been registered as an official <strong>Cleanup Task Worker</strong> by Municipal Authorities.</p>
           <div style="background: #f0f9ff; padding: 18px; border-radius: 10px; border-left: 4px solid #0284c7; margin: 20px 0;">
-            <h4 style="margin: 0 0 10px 0; color: #0369a1;">🔑 Your Login Credentials</h4>
+            <h4 style="margin: 0 0 10px 0; color: #0369a1;">Your Login Credentials</h4>
             <p style="margin: 6px 0;"><strong>Portal Login Link:</strong> <a href="${loginLink}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">${loginLink}</a></p>
             <p style="margin: 6px 0;"><strong>Login Email:</strong> <span style="color: #0f172a; font-weight: 600;">${cleanEmail}</span></p>
             <p style="margin: 6px 0;"><strong>Temporary Password:</strong> <span style="font-family: monospace; font-weight: bold; background: #e2e8f0; padding: 3px 8px; border-radius: 4px; color: #0f172a;">${tempPassword}</span></p>

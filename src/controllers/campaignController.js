@@ -1,4 +1,4 @@
-﻿const db = require('../config/db');
+const db = require('../config/db');
 const sendEmail = require('../utils/sendEmail');
 
 // Create Campaign (NGO or Authority/Admin only)
@@ -507,13 +507,14 @@ exports.assignVolunteer = async (req, res) => {
       html: `
         <div style="font-family: Arial, sans-serif; padding: 24px; color: #0f172a; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
           <div style="text-align: center; margin-bottom: 20px;">
-            <h2 style="color: #0284c7; margin: 0;">ðŸŒŠ TerraMarine Coastal Support</h2>
+            <img src="${frontendUrl}/images/whale_logo_icon.png" alt="TerraMarine Logo" height="48" style="margin-bottom: 12px;" />
+            <h2 style="color: #0284c7; margin: 0;">TerraMarine Coastal Support</h2>
             <p style="color: #64748b; font-size: 0.9rem; margin-top: 4px;">Official Coastal Cleanup Platform</p>
           </div>
           <p>Dear <strong>${cleanName}</strong>,</p>
           <p>You have been registered as a <strong>Volunteer</strong> by an NGO on the TerraMarine platform.</p>
           <div style="background: #f0f9ff; padding: 18px; border-radius: 10px; border-left: 4px solid #0284c7; margin: 20px 0;">
-            <h4 style="margin: 0 0 10px 0; color: #0369a1;">ðŸ”‘ Your Login Credentials</h4>
+            <h4 style="margin: 0 0 10px 0; color: #0369a1;">Your Login Credentials</h4>
             <p style="margin: 6px 0;"><strong>Portal Login Link:</strong> <a href="${loginLink}" style="color: #0284c7; font-weight: bold; text-decoration: underline;">${loginLink}</a></p>
             <p style="margin: 6px 0;"><strong>Login Email:</strong> <span style="color: #0f172a; font-weight: 600;">${cleanEmail}</span></p>
             <p style="margin: 6px 0;"><strong>Temporary Password:</strong> <span style="font-family: monospace; font-weight: bold; background: #e2e8f0; padding: 3px 8px; border-radius: 4px; color: #0f172a;">${tempPassword}</span></p>
