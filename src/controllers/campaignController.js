@@ -28,7 +28,7 @@ exports.createCampaign = async (req, res) => {
       latitude ? parseFloat(latitude) : null,
       longitude ? parseFloat(longitude) : null,
       maximum_volunteers ? parseInt(maximum_volunteers) : null,
-      visibility || 'Public'
+      req.user.role === 'NGO' ? (visibility || 'Public') : 'Public'
     ];
 
     const result = await db.query(insertQuery, values);
