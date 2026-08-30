@@ -86,7 +86,72 @@ const initCategoryDb = async () => {
       console.log('Seeded default waste types successfully.');
     }
 
-    console.log('Category and Waste Type DB tables initialized successfully.');
+    // 6. Create research_projects table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS research_projects (
+        project_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        researcher_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        study_area VARCHAR(150),
+        objectives TEXT,
+        start_date DATE,
+        end_date DATE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // 7. Create research_datasets table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS research_datasets (
+        dataset_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        researcher_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        project_id UUID REFERENCES research_projects(project_id) ON DELETE SET NULL,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        file_url TEXT NOT NULL,
+        file_name VARCHAR(255),
+        file_size INT,
+        data_type VARCHAR(50),
+        record_count INT DEFAULT 0,
+        location VARCHAR(150),
+        uploaded_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // 8. Create research_alerts table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS research_alerts (
+        alert_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        researcher_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        alert_type VARCHAR(100) NOT NULL,
+        parameter_name VARCHAR(50),
+        threshold_value DECIMAL(10,2),
+        comparison_operator VARCHAR(5),
+        location VARCHAR(150),
+        severity VARCHAR(20) DEFAULT 'Medium',
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // 9. Create research_reports table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS research_reports (
+        report_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        researcher_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        study_area VARCHAR(150),
+        start_date DATE,
+        end_date DATE,
+        parameters JSONB,
+        findings TEXT,
+        file_url TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    console.log('Category, Waste Type, and Researcher DB tables initialized successfully.');
   } catch (error) {
     console.error('Error initializing Category & Waste Type tables:', error.message);
   }
