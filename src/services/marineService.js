@@ -257,8 +257,17 @@ const getBulletinsFromDb = async (bulletinType = null, layerFilter = null) => {
     }
 
     if (layerFilter && layerFilter.trim() && layerFilter !== 'All') {
-      params.push(`%${layerFilter.trim()}%`);
-      query += ` AND layer ILIKE $${params.length}`;
+      const filter = layerFilter.trim();
+      const lowerFilter = filter.toLowerCase();
+
+      const keralaKeywords = ['kerala', 'ernakulam', 'kochi', 'thiruvananthapuram', 'trivandrum', 'alappuzha', 'alleppey', 'kollam', 'quilon', 'kozhikode', 'calicut', 'kannur', 'kasargod', 'thrissur', 'malappuram', 'ponnani', 'vizhinjam', 'kovalam', 'munambam', 'vypin', 'cherai'];
+
+      if (keralaKeywords.some(kw => lowerFilter.includes(kw))) {
+        query += ` AND (layer ILIKE '%kerala%' OR layer ILIKE '%lakshadweep%' OR layer ILIKE '%south coast%' OR issued_by ILIKE '%thiruvananthapuram%')`;
+      } else {
+        params.push(`%${filter}%`);
+        query += ` AND (layer ILIKE $${params.length} OR issued_by ILIKE $${params.length})`;
+      }
     }
 
     query += ` ORDER BY retrieved_at DESC, created_at DESC LIMIT 50`;
@@ -294,8 +303,139 @@ const getBulletinsFromDb = async (bulletinType = null, layerFilter = null) => {
   }
 };
 
+const { resolveImdCoverage } = require('./imdCoverageService');
+const { fetchPortWarnings } = require('./imdCoastalBulletinService');
+
+/**
+ * Strictly location-scoped alert resolver for Fisherman users
+ * Reads user's DB location, resolves IMD coverage region, filters bulletins,
+ * evaluates official warning status, and returns ONLY relevant bulletins.
+ */
+const getRelevantAlertsForFisherman = async (user) => {
+  if (!user) {
+    throw new Error('User context required');
+  }
+
+  const state = user.location_state || user.state || '';
+  const district = user.location_district || user.district || '';
+  const municipality = user.location_municipality || '';
+  const coastalArea = user.location_coastal_area || '';
+
+  // 1. Resolve IMD Coverage Region & Port ID
+  const coverage = resolveImdCoverage(state, district, municipality, coastalArea);
+
+  // 2. Make sure marine bulletins are synced
+  try {
+    await syncMarineBulletins(false);
+  } catch (err) {}
+
+  // 3. Retrieve all Coastal and Sea Area bulletins from DB
+  const coastalBulletins = await getBulletinsFromDb('COASTAL', null);
+  const seaBulletins = await getBulletinsFromDb('SEA_AREA', null);
+
+  // 4. Fetch Port Warnings
+  let portWarnings = [];
+  try {
+    portWarnings = await fetchPortWarnings();
+  } catch (err) {}
+
+  // 5. Strictly filter Coastal Bulletins by IMD coverage layer keywords
+  let relevantCoastal = null;
+  if (coverage.layerKeywords && coverage.layerKeywords.length > 0) {
+    relevantCoastal = coastalBulletins.find(b => {
+      const bLayer = (b.layer || '').toLowerCase();
+      const bIssued = (b.issuedBy || '').toLowerCase();
+      return coverage.layerKeywords.some(kw => bLayer.includes(kw) || bIssued.includes(kw));
+    });
+  }
+
+  // 6. Strictly filter Sea Area Bulletins by coverage sea area keywords
+  let relevantSea = null;
+  if (coverage.seaAreaKeywords && coverage.seaAreaKeywords.length > 0) {
+    relevantSea = seaBulletins.find(b => {
+      const bLayer = (b.layer || '').toLowerCase();
+      const bIssued = (b.issuedBy || '').toLowerCase();
+      return coverage.seaAreaKeywords.some(kw => bLayer.includes(kw) || bIssued.includes(kw));
+    });
+  }
+  // Fallback to first general Arabian Sea / Kerala Sea bulletin if exact layer keyword not in title but applies
+  if (!relevantSea && coverage.state === 'Kerala') {
+    relevantSea = seaBulletins.find(b => {
+      const bLayer = (b.layer || '').toLowerCase();
+      return bLayer.includes('kerala') || bLayer.includes('arabian sea') || bLayer.includes('south east');
+    }) || null;
+  }
+
+  // 7. Filter Port Warning if portName is resolved
+  let relevantPort = null;
+  if (coverage.portName) {
+    const searchPort = coverage.portName.toLowerCase();
+    relevantPort = portWarnings.find(pw => (pw.portName || '').toLowerCase().includes(searchPort)) || null;
+  }
+
+  // 8. Check for active official warnings across relevant items
+  const isOfficialWarning = (warningText) => {
+    if (!warningText) return false;
+    const w = warningText.trim().toUpperCase();
+    return w && w !== 'NIL' && w !== 'NIL.' && w !== 'NIL AT ALL PORTS' && w !== 'NONE' && w !== 'NO WARNING';
+  };
+
+  const warningsList = [];
+  if (relevantPort && isOfficialWarning(relevantPort.warning)) warningsList.push(relevantPort.warning);
+  if (relevantCoastal && isOfficialWarning(relevantCoastal.warning)) warningsList.push(relevantCoastal.warning);
+  if (relevantSea && isOfficialWarning(relevantSea.warning)) warningsList.push(relevantSea.warning);
+
+  let status = {
+    statusCode: 'NO_ACTIVE_WARNING',
+    statusText: 'NO ACTIVE OFFICIAL WARNING',
+    badgeColor: '#00f5d4',
+    message: 'No active official IMD warning was found for your registered coastal coverage area.'
+  };
+
+  if (warningsList.length > 0) {
+    status = {
+      statusCode: 'OFFICIAL_WARNING_ACTIVE',
+      statusText: 'OFFICIAL WARNING ACTIVE',
+      badgeColor: '#ef4444',
+      message: `Active IMD Warning: ${warningsList.join(' | ')}`
+    };
+  } else if (!relevantCoastal && !relevantSea && !relevantPort) {
+    status = {
+      statusCode: 'INFORMATION_UNAVAILABLE',
+      statusText: 'INFORMATION UNAVAILABLE',
+      badgeColor: '#94a3b8',
+      message: 'Location-specific marine information could not be matched to your registered coastal area.'
+    };
+  }
+
+  return {
+    success: true,
+    location: {
+      state: state || 'Kerala',
+      district: district || 'Malappuram',
+      municipality: municipality || 'Ponnani Municipality',
+      coastalArea: coastalArea || 'Ponnani Light House & Harbour'
+    },
+    imdCoverage: {
+      region: coverage.region,
+      portName: coverage.portName || null
+    },
+    status: status,
+    relevantCoastalBulletin: relevantCoastal || null,
+    relevantSeaBulletin: relevantSea || null,
+    relevantPortWarning: relevantPort || null,
+    counts: {
+      coastal: relevantCoastal ? 1 : 0,
+      seaArea: relevantSea ? 1 : 0,
+      port: relevantPort ? 1 : 0
+    },
+    retrievedAt: new Date().toISOString()
+  };
+};
+
 module.exports = {
   evaluateMarineStatus,
   syncMarineBulletins,
-  getBulletinsFromDb
+  getBulletinsFromDb,
+  getRelevantAlertsForFisherman
 };

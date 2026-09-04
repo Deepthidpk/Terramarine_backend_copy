@@ -317,6 +317,11 @@ exports.login = async (req, res) => {
         profile_image: user.profile_image,
         district: user.district,
         state: user.state,
+        location_state: user.location_state,
+        location_district: user.location_district,
+        location_municipality: user.location_municipality,
+        location_coastal_area: user.location_coastal_area,
+        location_completed: Boolean(user.location_completed)
       }
     });
   } catch (error) {
@@ -472,6 +477,11 @@ exports.googleLogin = async (req, res) => {
         profile_image: user.profile_image || picture,
         district: user.district,
         state: user.state,
+        location_state: user.location_state,
+        location_district: user.location_district,
+        location_municipality: user.location_municipality,
+        location_coastal_area: user.location_coastal_area,
+        location_completed: Boolean(user.location_completed)
       },
       redirect: '/dashboard'
     });
@@ -708,7 +718,9 @@ exports.resetPassword = async (req, res) => {
 exports.getProfile = async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT user_id, full_name, email, phone, role, organization_name, profile_image, address, district, state, status, created_at FROM users WHERE user_id = $1',
+      `SELECT user_id, full_name, email, phone, role, organization_name, profile_image, address, district, state, status,
+              location_state, location_district, location_municipality, location_coastal_area, location_completed, created_at
+       FROM users WHERE user_id = $1`,
       [req.user.user_id]
     );
 
@@ -765,7 +777,8 @@ exports.updateProfile = async (req, res) => {
            state = $5,
            profile_image = COALESCE(NULLIF($6, ''), profile_image)
        WHERE user_id = $7
-       RETURNING user_id, full_name, email, phone, role, organization_name, profile_image, address, district, state, status, created_at`,
+       RETURNING user_id, full_name, email, phone, role, organization_name, profile_image, address, district, state, status,
+                 location_state, location_district, location_municipality, location_coastal_area, location_completed, created_at`,
       [full_name.trim(), cleanPhone, cleanAddress, cleanDistrict, cleanState, profile_image || '', userId]
     );
 
