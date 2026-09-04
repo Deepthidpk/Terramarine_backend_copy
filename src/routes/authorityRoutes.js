@@ -9,5 +9,6 @@ router.use(requireRole(['Authority', 'Admin']));
 
 router.get('/users', authorityController.getDistrictUsers);
 router.put('/users/:id/status', authorityController.updateDistrictUserStatus);
+router.post('/workers', authorityController.addWorker);
 
 module.exports = router;

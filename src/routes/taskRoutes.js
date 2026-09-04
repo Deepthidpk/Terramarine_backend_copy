@@ -25,6 +25,7 @@ const upload = multer({ storage });
 router.post('/', authMiddleware, requireRole(['Authority', 'Admin']), taskController.createTask);
 router.get('/', authMiddleware, taskController.getTasks);
 router.get('/:id', authMiddleware, taskController.getTaskById);
-router.put('/:id/status', authMiddleware, upload.single('image'), taskController.updateTaskStatus);
+router.put('/:id/accept', authMiddleware, taskController.acceptTask);
+router.put('/:id/status', authMiddleware, upload.any(), taskController.updateTaskStatus);
 
 module.exports = router;

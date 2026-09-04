@@ -2,7 +2,7 @@ const db = require('../config/db');
 
 // Create Task (Authority only)
 exports.createTask = async (req, res) => {
-  const { report_id, campaign_id, assigned_worker, deadline } = req.body;
+  const { report_id, campaign_id, assigned_worker, assigned_workers, deadline } = req.body;
 
   if (!report_id || (typeof report_id === 'string' && report_id.trim() === '')) {
     return res.status(400).json({ error: 'Report ID is required.' });
@@ -11,7 +11,16 @@ exports.createTask = async (req, res) => {
   try {
     const cleanReportId = report_id.trim();
     const cleanCampaignId = (campaign_id && typeof campaign_id === 'string' && campaign_id.trim() !== '') ? campaign_id.trim() : null;
-    const cleanWorker = (assigned_worker && typeof assigned_worker === 'string' && assigned_worker.trim() !== '') ? assigned_worker.trim() : null;
+    
+    // Process assigned_workers (array or single worker string)
+    let workerIds = [];
+    if (Array.isArray(assigned_workers) && assigned_workers.length > 0) {
+      workerIds = assigned_workers.map(w => w.trim()).filter(Boolean);
+    } else if (assigned_worker && typeof assigned_worker === 'string' && assigned_worker.trim() !== '') {
+      workerIds = [assigned_worker.trim()];
+    }
+
+    const cleanWorker = workerIds.join(',');
     const cleanDeadline = (deadline && typeof deadline === 'string' && deadline.trim() !== '') ? deadline.trim() : null;
 
     // Check if report exists
@@ -27,6 +36,47 @@ exports.createTask = async (req, res) => {
     const taskCheck = await db.query('SELECT task_id FROM cleanup_tasks WHERE report_id = $1', [cleanReportId]);
     if (taskCheck.rows.length > 0) {
       return res.status(400).json({ error: 'A cleanup task is already assigned to this report.' });
+    }
+
+    // Worker availability check: verify worker is free on the target date
+    const targetDate = cleanDeadline || new Date().toISOString().slice(0, 10);
+    if (workerIds.length > 0) {
+      const busyWorkers = [];
+      for (const wId of workerIds) {
+        const busyCheck = await db.query(
+          `SELECT t.task_id, r.title, COALESCE(TO_CHAR(t.deadline AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD'), TO_CHAR(t.deadline, 'YYYY-MM-DD'), TO_CHAR(t.assigned_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD'), TO_CHAR(t.assigned_date, 'YYYY-MM-DD')) as task_date 
+           FROM cleanup_tasks t
+           JOIN pollution_reports r ON t.report_id = r.report_id
+           WHERE t.status IN ('Pending', 'In Progress')
+             AND (t.assigned_worker = $1::text OR t.assigned_worker ILIKE '%' || $1::text || '%')
+             AND (
+               (t.deadline IS NOT NULL AND (
+                 TO_CHAR(t.deadline, 'YYYY-MM-DD') = $2
+                 OR TO_CHAR(t.deadline AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') = $2
+                 OR TO_CHAR(t.deadline AT TIME ZONE 'UTC', 'YYYY-MM-DD') = $2
+               ))
+               OR (t.assigned_date IS NOT NULL AND (
+                 TO_CHAR(t.assigned_date, 'YYYY-MM-DD') = $2
+                 OR TO_CHAR(t.assigned_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') = $2
+                 OR TO_CHAR(t.assigned_date AT TIME ZONE 'UTC', 'YYYY-MM-DD') = $2
+               ))
+             )`,
+          [wId, targetDate]
+        );
+        if (busyCheck.rows.length > 0) {
+          const workerRes = await db.query('SELECT full_name FROM users WHERE user_id = $1', [wId]);
+          const workerName = workerRes.rows[0]?.full_name || 'Worker';
+          const busyTitles = busyCheck.rows.map(r => `"${r.title}"`).join(', ');
+          busyWorkers.push({ name: workerName, activeTask: busyTitles, date: targetDate });
+        }
+      }
+
+      if (busyWorkers.length > 0) {
+        const busyDetails = busyWorkers.map(w => `${w.name} is already assigned to "${w.activeTask}" on ${w.date}`).join('; ');
+        return res.status(400).json({ 
+          error: `Worker assignment blocked: ${busyDetails}. Workers cannot be assigned multiple tasks on the same date.` 
+        });
+      }
     }
 
     // Insert task
@@ -46,16 +96,18 @@ exports.createTask = async (req, res) => {
 
     const newTask = result.rows[0];
 
-    // If assigned to worker, send notification
-    if (cleanWorker) {
-      try {
-        await db.query(
-          `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
-           VALUES ($1, 'New Task Assigned', 'You have been assigned the cleanup task: ' || $2, 'PollutionReport', $3)`,
-          [cleanWorker, report.title, cleanReportId]
-        );
-      } catch (notifErr) {
-        console.error('Notification creation warning:', notifErr.message);
+    // Send notifications to all assigned workers
+    if (workerIds.length > 0) {
+      for (const wId of workerIds) {
+        try {
+          await db.query(
+            `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+             VALUES ($1, 'New Task Assigned', 'You have been assigned the cleanup task: ' || $2, 'PollutionReport', $3)`,
+            [wId, report.title, cleanReportId]
+          );
+        } catch (notifErr) {
+          console.error('Notification creation warning:', notifErr.message);
+        }
       }
     }
 
@@ -69,23 +121,33 @@ exports.createTask = async (req, res) => {
 // Get Tasks (Filterable)
 exports.getTasks = async (req, res) => {
   const { role, user_id } = req.user;
-  const { status } = req.query;
+  const { status, type } = req.query;
 
   let queryText = `
     SELECT t.*, r.title as report_title, r.location_name, r.latitude, r.longitude, r.waste_type,
-           u.full_name as worker_name, c.campaign_name
+           COALESCE((
+             SELECT string_agg(u.full_name, ', ') 
+             FROM users u 
+             WHERE u.user_id::text = ANY(string_to_array(t.assigned_worker, ','))
+           ), 'Unassigned') as worker_name, 
+           c.campaign_name
     FROM cleanup_tasks t
     JOIN pollution_reports r ON t.report_id = r.report_id
-    LEFT JOIN users u ON t.assigned_worker = u.user_id
     LEFT JOIN cleanup_campaigns c ON t.campaign_id = c.campaign_id
     WHERE 1=1
   `;
   const params = [];
 
-  // Volunteers only see their own tasks
-  if (role === 'Volunteer') {
-    params.push(user_id);
-    queryText += ` AND t.assigned_worker = $${params.length}`;
+  if (['Volunteer', 'Worker', 'Citizen'].includes(role)) {
+    if (type === 'available') {
+      queryText += ` AND (t.assigned_worker IS NULL OR t.assigned_worker = '') AND t.status = 'Pending'`;
+    } else if (type === 'my_tasks') {
+      params.push(user_id);
+      queryText += ` AND $${params.length}::text = ANY(string_to_array(t.assigned_worker, ','))`;
+    } else {
+      params.push(user_id);
+      queryText += ` AND ($${params.length}::text = ANY(string_to_array(t.assigned_worker, ',')) OR t.assigned_worker IS NULL OR t.assigned_worker = '')`;
+    }
   }
 
   if (status) {
@@ -93,7 +155,7 @@ exports.getTasks = async (req, res) => {
     queryText += ` AND t.status = $${params.length}`;
   }
 
-  queryText += ' ORDER BY t.assigned_date DESC';
+  queryText += ' ORDER BY t.assigned_date DESC NULLS LAST, t.task_id DESC';
 
   try {
     const result = await db.query(queryText, params);
@@ -104,6 +166,51 @@ exports.getTasks = async (req, res) => {
   }
 };
 
+// Accept Cleanup Task (Volunteer)
+exports.acceptTask = async (req, res) => {
+  const { id } = req.params;
+  const user_id = req.user.user_id;
+
+  try {
+    const taskResult = await db.query('SELECT * FROM cleanup_tasks WHERE task_id = $1', [id]);
+    if (taskResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found.' });
+    }
+
+    const task = taskResult.rows[0];
+
+    if (task.assigned_worker && task.assigned_worker !== user_id) {
+      return res.status(400).json({ error: 'This task is already assigned to another volunteer.' });
+    }
+
+    if (task.status === 'Completed' || task.status === 'Verified') {
+      return res.status(400).json({ error: `Cannot accept task because it is already ${task.status}.` });
+    }
+
+    const updateQuery = `
+      UPDATE cleanup_tasks 
+      SET assigned_worker = $1,
+          assigned_date = COALESCE(assigned_date, NOW()),
+          status = 'In Progress'
+      WHERE task_id = $2
+      RETURNING *
+    `;
+    const result = await db.query(updateQuery, [user_id, id]);
+
+    // Send notification to volunteer
+    await db.query(
+      `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+       VALUES ($1, 'Task Accepted', 'You have accepted the cleanup task and it is now in progress.', 'PollutionReport', $2)`,
+      [user_id, task.report_id]
+    );
+
+    res.json({ message: 'Task accepted successfully!', task: result.rows[0] });
+  } catch (error) {
+    console.error('Accept Task Error:', error);
+    res.status(500).json({ error: 'Server error accepting task.' });
+  }
+};
+
 // Get Task Details
 exports.getTaskById = async (req, res) => {
   const { id } = req.params;
@@ -111,10 +218,14 @@ exports.getTaskById = async (req, res) => {
   try {
     const queryText = `
       SELECT t.*, r.title as report_title, r.description as report_description, r.location_name, r.latitude, r.longitude, r.waste_type, r.severity,
-             u.full_name as worker_name, u.email as worker_email, c.campaign_name
+             COALESCE((
+               SELECT string_agg(u.full_name, ', ') 
+               FROM users u 
+               WHERE u.user_id::text = ANY(string_to_array(t.assigned_worker, ','))
+             ), 'Unassigned') as worker_name,
+             c.campaign_name
       FROM cleanup_tasks t
       JOIN pollution_reports r ON t.report_id = r.report_id
-      LEFT JOIN users u ON t.assigned_worker = u.user_id
       LEFT JOIN cleanup_campaigns c ON t.campaign_id = c.campaign_id
       WHERE t.task_id = $1
     `;
@@ -151,13 +262,29 @@ exports.updateTaskStatus = async (req, res) => {
     const task = taskResult.rows[0];
 
     // Auth validation
-    if (user_role === 'Volunteer' && task.assigned_worker !== user_id) {
+    if (['Volunteer', 'Worker', 'Citizen'].includes(user_role) && task.assigned_worker && !task.assigned_worker.includes(user_id)) {
       return res.status(403).json({ error: 'You are not assigned to this task.' });
     }
 
     let afterImage = task.after_image;
     if (req.file) {
       afterImage = `/uploads/${req.file.filename}`;
+    } else if (req.files && req.files.length > 0) {
+      afterImage = `/uploads/${req.files[0].filename}`;
+    }
+
+    if (status === 'Verified' && !afterImage) {
+      return res.status(400).json({ error: 'Cannot verify cleanup: Proof photo (After Image) must be uploaded before authority verification.' });
+    }
+
+    if (status === 'Completed' && req.body.completion_notes !== undefined) {
+      const notes = (req.body.completion_notes || '').trim();
+      if (!notes) {
+        return res.status(400).json({ error: 'Completion notes are required.' });
+      }
+      if (!/[a-zA-Z0-9]/.test(notes) || !/^[a-zA-Z0-9\s.,()'-]+$/.test(notes)) {
+        return res.status(400).json({ error: 'Special characters are not allowed. Please enter letters and numbers only.' });
+      }
     }
 
     let completedDate = task.completed_date;
@@ -171,7 +298,8 @@ exports.updateTaskStatus = async (req, res) => {
       SET status = $1, 
           after_image = COALESCE($2, after_image), 
           completion_notes = COALESCE($3, completion_notes), 
-          completed_date = COALESCE($4, completed_date) 
+          completed_date = COALESCE($4, completed_date),
+          assigned_worker = COALESCE(assigned_worker, $6)
       WHERE task_id = $5 
       RETURNING *
     `;
@@ -180,7 +308,8 @@ exports.updateTaskStatus = async (req, res) => {
       afterImage || null, 
       completion_notes || null, 
       completedDate || null, 
-      id
+      id,
+      user_id
     ]);
 
     const updatedTask = result.rows[0];
@@ -200,38 +329,47 @@ exports.updateTaskStatus = async (req, res) => {
         [task.report_id, user_id]
       );
 
-      // Trigger volunteer payment if worker is assigned and campaign exists
-      if (task.assigned_worker && task.campaign_id) {
-        // Create payment entry of default amount e.g. 500.00
-        const paymentCheck = await db.query(
-          'SELECT payment_id FROM payments WHERE volunteer_id = $1 AND campaign_id = $2',
-          [task.assigned_worker, task.campaign_id]
-        );
+      // Trigger worker payment reward if worker is assigned
+      if (task.assigned_worker) {
+        const workerIds = task.assigned_worker.split(',').map(id => id.trim()).filter(Boolean);
+        for (const wId of workerIds) {
+          const userCheck = await db.query('SELECT user_id FROM users WHERE user_id::text = $1', [wId]);
+          if (userCheck.rows.length === 0) continue;
 
-        if (paymentCheck.rows.length === 0) {
-          await db.query(
-            `INSERT INTO payments (volunteer_id, campaign_id, amount, payment_status)
-             VALUES ($1, $2, 500.00, 'Pending')`,
-            [task.assigned_worker, task.campaign_id]
+          const paymentCheck = await db.query(
+            'SELECT payment_id FROM payments WHERE volunteer_id::text = $1 AND (task_id = $2 OR (task_id IS NULL AND campaign_id IS NOT NULL AND campaign_id = $3))',
+            [wId, task.task_id, task.campaign_id]
           );
 
-          // Notify worker
-          await db.query(
-            `INSERT INTO notifications (user_id, title, message)
-             VALUES ($1, 'Payment Pending', 'A clean-up reward of ₹500 is pending verification for your task.')`,
-            [task.assigned_worker]
-          );
+          if (paymentCheck.rows.length === 0) {
+            await db.query(
+              `INSERT INTO payments (volunteer_id, campaign_id, task_id, amount, payment_status)
+               VALUES ($1, $2, $3, 500.00, 'Pending')`,
+              [wId, task.campaign_id || null, task.task_id]
+            );
+
+            // Notify worker
+            await db.query(
+              `INSERT INTO notifications (user_id, title, message)
+               VALUES ($1, 'Payment Pending', 'A clean-up reward of ₹500 is pending payout verification for your task.')`,
+              [wId]
+            );
+          }
         }
       }
     }
 
-    // Notify Authority if worker completed the task
+    // Notify Municipal Authorities if worker completed the task
     if (status === 'Completed') {
+      const workerName = req.user.full_name || 'A volunteer';
+      const reportTitle = task.report_title || updatedTask.report_title || `Report #${task.report_id}`;
+      const completedMsg = `${workerName} has completed the cleanup task for "${reportTitle}". Clean-up completion proof has been uploaded and is ready for authority verification.`;
+
       await db.query(
         `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
-         SELECT user_id, 'Task Completed by Volunteer', 'Task for report has been submitted with clean-up proof.', 'PollutionReport', $1
-         FROM users WHERE role = 'Authority'`,
-        [task.report_id]
+         SELECT user_id, 'Cleanup Task Completed', $1, 'CleanupTask', $2
+         FROM users WHERE role IN ('Authority', 'Admin')`,
+        [completedMsg, id]
       );
     }
 

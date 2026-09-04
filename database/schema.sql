@@ -188,6 +188,7 @@ CREATE TABLE cleanup_campaigns (
     longitude DECIMAL(10,7),
     maximum_volunteers INT,
     status campaign_status NOT NULL DEFAULT 'Upcoming',
+    visibility VARCHAR(20) DEFAULT 'Public',
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -199,6 +200,7 @@ CREATE TABLE campaign_volunteers (
     joined_date TIMESTAMP NOT NULL DEFAULT NOW(),
     attendance BOOLEAN NOT NULL DEFAULT FALSE,
     certificate_status BOOLEAN NOT NULL DEFAULT FALSE,
+    registration_status VARCHAR(20) DEFAULT 'Approved',
     CONSTRAINT unique_campaign_volunteer UNIQUE (campaign_id, volunteer_id)
 );
 

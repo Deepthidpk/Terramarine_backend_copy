@@ -69,12 +69,22 @@ exports.createReport = async (req, res) => {
       [newReport.report_id, reported_by]
     );
 
-    // In-app Notification
+    // In-app Notification to Citizen Reporter
     const notifMessage = `Your pollution report "${newReport.title}" has been received and logged.`;
     await db.query(
       `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
        VALUES ($1, 'Report Submitted', $2, 'PollutionReport', $3)`,
       [reported_by, notifMessage, newReport.report_id]
+    );
+
+    // Notify all Municipal Authorities & Admins about the new pollution report
+    const categoryTag = (newReport.report_category || 'Pollution').toUpperCase();
+    const authorityMsg = `[${categoryTag}] New pollution report "${newReport.title}" (${newReport.severity || 'Medium'} Severity, ${newReport.waste_type || 'Waste'}) was submitted at ${newReport.location_name || 'coastal location'}.`;
+    await db.query(
+      `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+       SELECT user_id, 'New Pollution Report Submitted', $1, 'PollutionReport', $2
+       FROM users WHERE role IN ('Authority', 'Admin')`,
+      [authorityMsg, newReport.report_id]
     );
 
     // Dispatch Email Notification to Citizen
@@ -112,7 +122,13 @@ exports.getReports = async (req, res) => {
   const { status, category, severity } = req.query;
   
   let queryText = `
-    SELECT r.*, u.full_name as reporter_name, u.role as reporter_role
+    SELECT r.*, u.full_name as reporter_name, u.role as reporter_role,
+      (
+        SELECT string_agg(u2.full_name, ', ')
+        FROM cleanup_tasks t
+        JOIN users u2 ON u2.user_id::text = ANY(string_to_array(t.assigned_worker, ','))
+        WHERE t.report_id = r.report_id
+      ) as assigned_workers
     FROM pollution_reports r
     JOIN users u ON r.reported_by = u.user_id
     WHERE 1=1
@@ -122,6 +138,8 @@ exports.getReports = async (req, res) => {
   if (status) {
     params.push(status);
     queryText += ` AND r.status = $${params.length}`;
+  } else if (req.query.include_completed !== 'true') {
+    queryText += ` AND r.status != 'Completed'`;
   }
   if (category) {
     params.push(category);

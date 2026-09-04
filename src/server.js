@@ -39,17 +39,29 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const authorityRoutes = require('./routes/authorityRoutes');
+const certificateRoutes = require('./routes/certificateRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const marineRoutes = require('./routes/marineRoutes');
+const initCategoryDb = require('./config/initCategoryDb');
+const initMarineDb = require('./config/initMarineDb');
+
+// Initialize category, waste type, and marine DB tables and schema alterations
+initCategoryDb();
+initMarineDb();
 
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/alerts', alertRoutes);
+app.use('/api/fisherman/marine', marineRoutes);
 app.use('/api/researcher', researcherRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/authority', authorityRoutes);
+app.use('/api/certificates', certificateRoutes);
+app.use('/api', categoryRoutes);
 
 // Dashboard stats endpoint (Authority & General Stats)
 app.get('/api/stats', authMiddleware, async (req, res) => {

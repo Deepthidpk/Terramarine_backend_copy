@@ -39,3 +39,30 @@ exports.markAsRead = async (req, res) => {
     res.status(500).json({ error: 'Server error updating notification status.' });
   }
 };
+
+// Clear All Notifications
+exports.clearNotifications = async (req, res) => {
+  const user_id = req.user.user_id;
+
+  try {
+    await db.query('DELETE FROM notifications WHERE user_id = $1', [user_id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Clear Notifications Error:', error);
+    res.status(500).json({ error: 'Server error clearing notifications.' });
+  }
+};
+
+// Delete Single Notification
+exports.deleteNotification = async (req, res) => {
+  const { id } = req.params;
+  const user_id = req.user.user_id;
+
+  try {
+    await db.query('DELETE FROM notifications WHERE notification_id = $1 AND user_id = $2', [id, user_id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete Notification Error:', error);
+    res.status(500).json({ error: 'Server error deleting notification.' });
+  }
+};
