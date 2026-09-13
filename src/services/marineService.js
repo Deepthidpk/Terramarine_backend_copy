@@ -384,11 +384,21 @@ const getRelevantAlertsForFisherman = async (user) => {
     relevantPort = portWarnings.find(pw => (pw.portName || '').toLowerCase().includes(searchPort)) || null;
   }
 
+  // 7.1 Fetch & Evaluate Official IMD Cyclone Wind Warnings
+  let cycloneWarning = null;
+  try {
+    const { fetchCycloneWindWarnings, evaluateCycloneWindWarningForLocation } = require('./imdCycloneService');
+    const cycloneData = await fetchCycloneWindWarnings();
+    const coords = user.latitude && user.longitude ? [parseFloat(user.longitude), parseFloat(user.latitude)] : coverage.coordinates;
+    cycloneWarning = evaluateCycloneWindWarningForLocation(cycloneData, coords);
+  } catch (err) {}
+
   // 8. Deterministic Evaluation for Marine Alert, Weather Alert, and Overall Status
   const marineAlert = calculateMarineAlert({
     coastalBulletin: relevantCoastal,
     seaBulletin: relevantSea,
     portWarning: relevantPort,
+    cycloneWarning: cycloneWarning,
     location: locationObj,
     coverage: coverage,
     currentTime: new Date()
@@ -397,6 +407,7 @@ const getRelevantAlertsForFisherman = async (user) => {
   const weatherAlert = calculateWeatherAlert({
     coastalBulletin: relevantCoastal,
     seaBulletin: relevantSea,
+    cycloneWarning: cycloneWarning,
     location: locationObj,
     coverage: coverage,
     currentTime: new Date()
@@ -431,13 +442,15 @@ const getRelevantAlertsForFisherman = async (user) => {
     },
     imdCoverage: {
       region: coverage.region,
-      portName: coverage.portName || null
+      portName: coverage.portName || null,
+      coordinates: coverage.coordinates || null
     },
     status: legacyStatus,
     marineAlert,
     weatherAlert,
     overallStatus,
     validity: primaryValidity,
+    cycloneWarning: cycloneWarning || null,
     relevantCoastalBulletin: relevantCoastal || null,
     relevantSeaBulletin: relevantSea || null,
     relevantPortWarning: relevantPort || null,
