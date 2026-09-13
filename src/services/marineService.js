@@ -305,6 +305,13 @@ const getBulletinsFromDb = async (bulletinType = null, layerFilter = null) => {
 
 const { resolveImdCoverage } = require('./imdCoverageService');
 const { fetchPortWarnings } = require('./imdCoastalBulletinService');
+const {
+  parseBulletinValidity,
+  calculateMarineAlert,
+  calculateWeatherAlert,
+  calculateOverallSafety,
+  isWarningApplicableToLocation
+} = require('./marineSafetyEvaluator');
 
 /**
  * Strictly location-scoped alert resolver for Fisherman users
@@ -323,6 +330,7 @@ const getRelevantAlertsForFisherman = async (user) => {
 
   // 1. Resolve IMD Coverage Region & Port ID
   const coverage = resolveImdCoverage(state, district, municipality, coastalArea);
+  const locationObj = { state, district, municipality, coastalArea };
 
   // 2. Make sure marine bulletins are synced
   try {
@@ -344,8 +352,7 @@ const getRelevantAlertsForFisherman = async (user) => {
   if (coverage.layerKeywords && coverage.layerKeywords.length > 0) {
     relevantCoastal = coastalBulletins.find(b => {
       const bLayer = (b.layer || '').toLowerCase();
-      const bIssued = (b.issuedBy || '').toLowerCase();
-      return coverage.layerKeywords.some(kw => bLayer.includes(kw) || bIssued.includes(kw));
+      return coverage.layerKeywords.some(kw => bLayer.includes(kw));
     });
   }
 
@@ -354,14 +361,18 @@ const getRelevantAlertsForFisherman = async (user) => {
   if (coverage.seaAreaKeywords && coverage.seaAreaKeywords.length > 0) {
     relevantSea = seaBulletins.find(b => {
       const bLayer = (b.layer || '').toLowerCase();
-      const bIssued = (b.issuedBy || '').toLowerCase();
-      return coverage.seaAreaKeywords.some(kw => bLayer.includes(kw) || bIssued.includes(kw));
+      // Ensure we don't accidentally pick Lakshadweep Sea for North Kerala if user is in Kerala
+      if (coverage.state === 'Kerala' && bLayer.includes('lakshadweep') && !coverage.region.includes('Lakshadweep')) {
+        return false;
+      }
+      return coverage.seaAreaKeywords.some(kw => bLayer.includes(kw));
     });
   }
-  // Fallback to first general Arabian Sea / Kerala Sea bulletin if exact layer keyword not in title but applies
+  // Fallback to first general Arabian Sea / Kerala Sea bulletin if exact layer keyword not in title but applies (excluding Lakshadweep-only)
   if (!relevantSea && coverage.state === 'Kerala') {
     relevantSea = seaBulletins.find(b => {
       const bLayer = (b.layer || '').toLowerCase();
+      if (bLayer.includes('lakshadweep')) return false;
       return bLayer.includes('kerala') || bLayer.includes('arabian sea') || bLayer.includes('south east');
     }) || null;
   }
@@ -373,40 +384,42 @@ const getRelevantAlertsForFisherman = async (user) => {
     relevantPort = portWarnings.find(pw => (pw.portName || '').toLowerCase().includes(searchPort)) || null;
   }
 
-  // 8. Check for active official warnings across relevant items
-  const isOfficialWarning = (warningText) => {
-    if (!warningText) return false;
-    const w = warningText.trim().toUpperCase();
-    return w && w !== 'NIL' && w !== 'NIL.' && w !== 'NIL AT ALL PORTS' && w !== 'NONE' && w !== 'NO WARNING';
+  // 8. Deterministic Evaluation for Marine Alert, Weather Alert, and Overall Status
+  const marineAlert = calculateMarineAlert({
+    coastalBulletin: relevantCoastal,
+    seaBulletin: relevantSea,
+    portWarning: relevantPort,
+    location: locationObj,
+    coverage: coverage,
+    currentTime: new Date()
+  });
+
+  const weatherAlert = calculateWeatherAlert({
+    coastalBulletin: relevantCoastal,
+    seaBulletin: relevantSea,
+    location: locationObj,
+    coverage: coverage,
+    currentTime: new Date()
+  });
+
+  const overallStatus = calculateOverallSafety(marineAlert, weatherAlert);
+
+  // Validity checks
+  const coastalValidity = relevantCoastal ? parseBulletinValidity(relevantCoastal) : null;
+  const seaValidity = relevantSea ? parseBulletinValidity(relevantSea) : null;
+  const primaryValidity = coastalValidity || seaValidity || {
+    isValid: false,
+    formattedValidUntil: 'Unavailable',
+    validUntil: null
   };
 
-  const warningsList = [];
-  if (relevantPort && isOfficialWarning(relevantPort.warning)) warningsList.push(relevantPort.warning);
-  if (relevantCoastal && isOfficialWarning(relevantCoastal.warning)) warningsList.push(relevantCoastal.warning);
-  if (relevantSea && isOfficialWarning(relevantSea.warning)) warningsList.push(relevantSea.warning);
-
-  let status = {
-    statusCode: 'NO_ACTIVE_WARNING',
-    statusText: 'NO ACTIVE OFFICIAL WARNING',
-    badgeColor: '#00f5d4',
-    message: 'No active official IMD warning was found for your registered coastal coverage area.'
+  // Backwards-compatible legacy status object matching overall evaluation
+  const legacyStatus = {
+    statusCode: overallStatus.level === 'RED' ? 'OFFICIAL_WARNING_ACTIVE' : overallStatus.level === 'YELLOW' ? 'ADVISORY_CAUTION' : overallStatus.level === 'GREEN' ? 'NO_ACTIVE_WARNING' : 'INFORMATION_UNAVAILABLE',
+    statusText: overallStatus.title,
+    badgeColor: overallStatus.badgeColor,
+    message: overallStatus.message
   };
-
-  if (warningsList.length > 0) {
-    status = {
-      statusCode: 'OFFICIAL_WARNING_ACTIVE',
-      statusText: 'OFFICIAL WARNING ACTIVE',
-      badgeColor: '#ef4444',
-      message: `Active IMD Warning: ${warningsList.join(' | ')}`
-    };
-  } else if (!relevantCoastal && !relevantSea && !relevantPort) {
-    status = {
-      statusCode: 'INFORMATION_UNAVAILABLE',
-      statusText: 'INFORMATION UNAVAILABLE',
-      badgeColor: '#94a3b8',
-      message: 'Location-specific marine information could not be matched to your registered coastal area.'
-    };
-  }
 
   return {
     success: true,
@@ -420,7 +433,11 @@ const getRelevantAlertsForFisherman = async (user) => {
       region: coverage.region,
       portName: coverage.portName || null
     },
-    status: status,
+    status: legacyStatus,
+    marineAlert,
+    weatherAlert,
+    overallStatus,
+    validity: primaryValidity,
     relevantCoastalBulletin: relevantCoastal || null,
     relevantSeaBulletin: relevantSea || null,
     relevantPortWarning: relevantPort || null,
