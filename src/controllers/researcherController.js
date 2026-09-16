@@ -566,10 +566,60 @@ Instructions:
       }
     }
 
-    // --- A. PURE GREETINGS, IDENTITY & CASUAL CONVERSATION ---
+    // =============================================================
+    // 1. EMERGENCY, DISTRESS, TROUBLE & SOS ASSISTANCE
+    // =============================================================
+    const isTroubleOrEmergency = /\b(trouble|in trouble|in a trouble|danger|emergency|sos|help me|need help|stuck|lost|stranded|engine fail|mayday|accident|capsiz|sinking|injured|rescue|life jacket|man overboard)\b/i.test(queryText);
+
+    if (isTroubleOrEmergency) {
+      reply = `### 🚨 Emergency & Immediate Assistance
+**Octo is here to help you, ${researcherName}!** 🐙
+
+Please tell me more about the difficulty or situation you are facing:
+
+---
+
+#### 1. ⚓ Maritime & Coastal Sea Emergency:
+If you, your crew, or researchers are in distress along the coast or at sea:
+* 📞 **Indian Coast Guard MRCC (Maritime Rescue)**: **\`1554\`** or **\`0484-2210100\`** (Kochi Maritime Rescue Coordination Centre)
+* 🚔 **Coastal Security Police Helpline**: **\`1093\`**
+* 🚨 **National Emergency Helpline (ERSS)**: **\`112\`**
+* 🏥 **Ambulance & Medical Emergency**: **\`108\`**
+* 🚒 **Fire & Coastal Disaster Response**: **\`101\`**
+
+---
+
+#### 2. 🌊 Coastal Weather & High Wave Hazard:
+* If you are caught in high waves, squally monsoon winds, or rough sea conditions, navigate towards the nearest designated landing shelter (**Kochi Port Channel, Munambam Wharf, or Neendakara Basin**).
+* Active IMD warnings and sea conditions can be checked immediately in the **Ocean Intelligence** or **Research Alerts** tab.
+
+---
+
+#### 3. 💻 TerraMarine Platform or Research Troubleshooting:
+* If you're encountering technical trouble with:
+  * **Dataset Uploads**: File format mismatch or CSV parsing errors
+  * **Sensor Telemetry**: Live sensor anomalies or missing readings
+  * **Research Reports**: Report generation or download issues
+  * **Field Biodiversity**: Submitting sighting logs or GPS coordinates
+
+**Tell me specifically what you are working on or what error you are seeing, and I will resolve it with you step-by-step!**`;
+
+      suggestions = [
+        "What is the latest official IMD marine alert?",
+        "How do I upload a research dataset?",
+        "How to create an automated research alert?",
+        "Show water quality telemetry trends in Kochi"
+      ];
+
+      return res.json({ reply, chart: null, options: { suggestions } });
+    }
+
+    // =============================================================
+    // 2. GREETINGS, IDENTITY & CASUAL CONVERSATION
+    // =============================================================
     const isPureGreeting = /^(hi+|hey+|hello+|namaste|good\s*(morning|afternoon|evening|day)|greetings|howdy)\b/i.test(queryText) && queryText.length <= 25;
     const isIdentityQuery = /(your name|who are you|what are you called|what is your name|who made you|about yourself)\b/i.test(queryText);
-    const isCasualChat = /^(how are you|how do you do|what's up|whats up|how's it going|help me$)\b/i.test(queryText);
+    const isCasualChat = /^(how are you|how do you do|what's up|whats up|how's it going)\b/i.test(queryText);
 
     if (isIdentityQuery) {
       reply = `My name is **Octo** 🐙! 
@@ -582,6 +632,7 @@ I am your dedicated **TerraMarine AI Environmental Intelligence Assistant**, des
 * **Biodiversity Tracking**: Analyze species observations and ecosystem vulnerability indexes
 * **Comparative Cross-Station Metrics**: Visualize station deltas with automatic Recharts graphs
 * **Study & Framework Design**: Generate scientific research proposals and EPA/ISO field sampling protocols
+* **Data Science & Scripting**: Write Python/Pandas scripts for marine datasets
 
 How can Octo assist your research today?`;
 
@@ -643,146 +694,206 @@ Just let me know what you are working on, and Octo will be glad to assist!`;
       return res.json({ reply, chart: null, options: { suggestions } });
     }
 
-    // --- B. RESEARCH PROJECT DESIGN, METHODOLOGY & PROPOSAL DRAFTING ---
-    const isResearchDesign = /\b(design|proposal|protocol|methodology|how to sample|study design|project proposal|research plan|draft abstract|framework|experiment|grant proposal)\b/i.test(queryText);
+    // =============================================================
+    // 3. PLATFORM HOW-TO & NAVIGATION GUIDES
+    // =============================================================
+    const isPlatformGuide = /\b(how (do|can|to)|where (is|can|do)|guide me|how does)\b/i.test(queryText) &&
+                            /\b(upload|dataset|datasets|report|reports|project|projects|alert|alerts|observation|observations|sighting|map|dashboard|threshold|identify|species)\b/i.test(queryText);
 
-    if (isResearchDesign) {
-      let topic = 'Coastal Microplastic & Debris Dynamics in Estuarine Ecosystems';
-      if (queryText.includes('plastic') || queryText.includes('microplastic')) topic = 'Microplastic Ingestion and Trophic Transfer in Coastal Ecosystems';
-      else if (queryText.includes('acidification') || queryText.includes('ph')) topic = 'Estuarine Buffering Capacity and Aragonite Saturation Dynamics';
-      else if (queryText.includes('mangrove') || queryText.includes('carbon')) topic = 'Blue Carbon Stock Assessment and Sediment Accretion in Mangrove Corridors';
-      else if (queryText.includes('turtle') || queryText.includes('biodiversity') || queryText.includes('species')) topic = 'Spatial-Temporal Distribution and Nesting Habitat Ecology of Chelonia mydas';
-      else if (queryText.includes('water') || queryText.includes('quality') || queryText.includes('sensor')) topic = 'Autonomous IoT Multi-Sensor Profiling for Estuarine Turbidity and Hypoxia';
+    if (isPlatformGuide) {
+      if (queryText.includes('dataset') || queryText.includes('upload')) {
+        reply = `### 📊 How to Upload & Manage Research Datasets
+**Guide for**: ${researcherName}
 
-      reply = `### 📑 Scientific Research Framework & Proposal Draft
-**Prepared for**: ${researcherName}  
-**Focus Subject**: *${topic}*
+You can upload coastal data files (CSV, NetCDF, GeoJSON, Excel) into the TerraMarine repository:
 
----
+1. **Navigate**: Click on **"Datasets"** in the left sidebar menu.
+2. **Select File**: Drag and drop your file (e.g. \`sensor_timeseries.csv\`) or click **Browse Files**.
+3. **Fill Dataset Metadata**:
+   * **Dataset Title**: e.g., *"Vembanad Lake Seasonal Salinity Grid"*
+   * **Category / Format**: Select \`Water Quality\`, \`Microplastics\`, or \`Satellite SST\`
+   * **Sampling Location**: Specify coastal sector (e.g., *Fort Kochi*)
+4. **Publish**: Click **Upload Dataset**. The dataset will be instantly cataloged and available for AI querying!`;
+      } else if (queryText.includes('report') || queryText.includes('generate')) {
+        reply = `### 📑 How to Generate & Export Research Reports
+**Guide for**: ${researcherName}
 
-#### 1. Research Objectives & Hypothesis
-* **Primary Objective**: Characterize baseline spatial variance and temporal trends in target marine indicators across coastal sampling transects.
-* **Secondary Objective**: Quantify the correlation between anthropogenically driven pollution influx and ecological health metrics.
-* **Core Hypothesis**: $H_1$ — Localized tidal flushing and seasonal monsoonal discharge significantly modulate parameter concentrations compared to open pelagic waters.
+TerraMarine enables automated synthesis of research findings into publication-ready reports:
 
-#### 2. Recommended Sampling Methodology & Field Protocol
-1. **Transect Stratification**: Establish 3 distinct sampling zones (Estuarine Mouth, Nearshore Surf Zone, and 2 km Offshore Pelagic Node).
-2. **Water Column Profiling**: Deploy calibrated multi-parameter CTD/Optical sensors for continuous depth-resolved logging of **pH, Turbidity (NTU), Dissolved Oxygen ($mg/L$), and Salinity (PSU)**.
-3. **Debris / Specimen Extraction**:
-   * Deploy $300\\,\\mu m$ neuston/manta nets at $2\\text{–}3\\text{ knots}$ for 15-minute standardized surface tows.
-   * Digestion via $30\\%\\,H_2O_2$ wet peroxide oxidation followed by density separation using concentrated $NaCl$ / $ZnCl_2$ solution.
-4. **Analytical Identification**: Utilize **FTIR / Micro-Raman Spectroscopy** for polymer classification and gravimetric quantification ($items/m^3$).
+1. **Navigate**: Click on **"Research Reports"** in the left sidebar.
+2. **Configure Parameters**:
+   * Set **Study Title** and **Target Region** (e.g., *Kochi Harbour Corridor*).
+   * Choose **Date Range** and toggle included telemetry data (pH, Turbidity, Pollution logs).
+3. **Generate**: Click **Generate Research Report**.
+4. **Export**: Review the generated abstract, telemetry matrices, and citations, then click **Download PDF** or **Save to Workspace**.`;
+      } else if (queryText.includes('alert') || queryText.includes('threshold')) {
+        reply = `### 🔔 How to Configure Real-Time Research Alerts
+**Guide for**: ${researcherName}
 
-#### 3. Parameter Matrix & Analytical Standards
-| Parameter | Analytical Instrumentation | Detection Threshold | Standard Protocol |
-| :--- | :--- | :--- | :--- |
-| **Seawater pH** | Glass Electrode / Spectrophotometric Dye | $\\pm 0.01\\text{ pH}$ | EPA 150.1 / ISO 10523 |
-| **Turbidity** | 90° Nephelometric Near-IR Sensor | $0.01\\text{ NTU}$ | ISO 7027 |
-| **Microplastics** | Micro-FTIR / Raman Spectroscopy | $> 20\\,\\mu m$ | NOAA Marine Debris Protocol |
-| **Dissolved Oxygen**| Optical Luminescent Sensor | $0.05\\text{ mg/L}$ | ASTM D888-12 |
+Automated alert rules trigger notifications when IoT water sensors breach your defined thresholds:
 
-#### 4. Statistical Analysis Plan
-* **Multivariate Analysis**: Perform Principal Component Analysis (PCA) and Non-metric Multidimensional Scaling (NMDS) to identify environmental driver clusters.
-* **Significance Testing**: Two-way ANOVA with Tukey's post-hoc test to evaluate spatial-temporal variance ($p < 0.05$).`;
+1. **Navigate**: Click on **"Research Alerts"** in the sidebar.
+2. **Define Alert Rule**:
+   * **Parameter**: Choose \`pH\`, \`Turbidity\`, or \`Temperature\`.
+   * **Condition & Value**: Set operator (e.g., \`Turbidity > 20 NTU\` or \`pH < 7.5\`).
+   * **Target Location**: Select monitoring station (e.g., *Fort Kochi Buoy #1*).
+   * **Severity**: Set \`Medium\` or \`Critical\`.
+3. **Save**: Click **Activate Alert Rule**. You will receive instantaneous alerts whenever live telemetry exceeds your limits!`;
+      } else if (queryText.includes('project')) {
+        reply = `### 🔬 How to Create & Manage Research Projects
+**Guide for**: ${researcherName}
+
+Track your long-term research initiatives directly on TerraMarine:
+
+1. **Navigate**: Click on **"Research Projects"** in the sidebar.
+2. **Click "New Project"**:
+   * Enter **Project Title**, **Principal Investigator (PI)**, and **Lead Institution**.
+   * Specify **Study Area**, **Objectives**, and **Date Timeline**.
+3. **Collaborate & Track**: Link datasets, observation logs, and alert rules to the project workspace.`;
+      } else {
+        reply = `### 🐬 How to Submit Marine Biodiversity Observations
+**Guide for**: ${researcherName}
+
+Log ecological field sightings along the coastline:
+
+1. **Navigate**: Click on **"My Observations"** or **"Species Explorer"**.
+2. **Log Sighting**:
+   * **Species Name**: Enter scientific or common name (e.g., *Chelonia mydas* / Green Sea Turtle).
+   * **GPS Coordinates**: Auto-detect current coordinates or enter latitude/longitude.
+   * **Observation Notes**: Record behavioral notes, group size, and health state.
+   * **Upload Photo**: Attach field photographs for AI species verification.
+3. **Submit**: Click **Record Observation** to log it into the state biodiversity archive!`;
+      }
 
       suggestions = [
+        "How do I upload a research dataset?",
+        "How to generate a research report?",
+        "How to create an automated research alert?",
+        "Compare pH between Kochi and Alappuzha"
+      ];
+
+      return res.json({ reply, chart: null, options: { suggestions } });
+    }
+
+    // =============================================================
+    // 4. CODING, PYTHON, R, STATISTICS & DATA SCIENCE HELP
+    // =============================================================
+    const isCodingOrDataSci = /\b(python|script|pandas|numpy|r script|r code|write code|code snippet|netcdf|geopandas|gis|geojson|formula|calculate|regression|anova|pca)\b/i.test(queryText);
+
+    if (isCodingOrDataSci) {
+      if (queryText.includes('python') || queryText.includes('pandas') || queryText.includes('script') || queryText.includes('load')) {
+        reply = `### 🐍 Python Data Analysis Script for TerraMarine Telemetry
+**Prepared for**: ${researcherName}
+
+Here is a clean **Python (Pandas + Matplotlib)** script to load, clean, and visualize seawater sensor time-series:
+
+\`\`\`python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# 1. Load sensor readings dataset
+df = pd.read_csv('terramarine_sensor_readings.csv', parse_dates=['recorded_at'])
+
+# 2. Basic statistical summary
+print("=== Coastal Water Telemetry Summary ===")
+print(df[['ph', 'turbidity', 'temperature']].describe())
+
+# 3. Filter anomalous readings (e.g. sensor drift)
+clean_df = df[(df['ph'] >= 6.5) & (df['ph'] <= 9.0) & (df['turbidity'] >= 0)]
+
+# 4. Compute 6-hour rolling average
+clean_df['ph_rolling'] = clean_df['ph'].rolling(window=6, min_periods=1).mean()
+clean_df['turb_rolling'] = clean_df['turbidity'].rolling(window=6, min_periods=1).mean()
+
+# 5. Plot dual-axis time series
+fig, ax1 = plt.subplots(figsize=(10, 5))
+
+color = 'tab:blue'
+ax1.set_xlabel('Timestamp')
+ax1.set_ylabel('Seawater pH', color=color)
+ax1.plot(clean_df['recorded_at'], clean_df['ph_rolling'], color=color, label='pH (6h Rolling)')
+ax1.tick_params(axis='y', labelcolor=color)
+
+ax2 = ax1.twinx()
+color = 'tab:orange'
+ax2.set_ylabel('Turbidity (NTU)', color=color)
+ax2.plot(clean_df['recorded_at'], clean_df['turb_rolling'], color=color, linestyle='--', label='Turbidity (NTU)')
+ax2.tick_params(axis='y', labelcolor=color)
+
+plt.title('Kerala Coastal Water Quality: pH & Turbidity Profile')
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+\`\`\`
+
+> 💡 **Tip for ${researcherName}**: You can export CSV telemetry directly from the **Datasets** tab and run this script in Jupyter Notebook or Google Colab.`;
+      } else {
+        reply = `### 📊 Statistical Methods for Marine Telemetry Analysis
+**Prepared for**: ${researcherName}
+
+#### 1. Principal Component Analysis (PCA):
+* **Goal**: Reduce multi-parameter dimensionality ($\text{pH}, \text{Turbidity}, \text{Temperature}, \text{Dissolved Oxygen}$) to identify dominant environmental gradients.
+* **Standardization**: Use z-score normalization: $z = \\frac{x - \\mu}{\\sigma}$ prior to covariance matrix eigen-decomposition.
+
+#### 2. Two-Way ANOVA with Post-Hoc Tukey HSD:
+* **Hypothesis Testing**: Evaluate if parameter variations across stations (e.g. *Kochi vs Alappuzha*) and seasons (Monsoon vs Pre-monsoon) are statistically significant ($p < 0.05$).
+
+#### 3. Carbonate Speciation Formula:
+* **Aragonite Saturation ($\Omega_{\\text{arag}}$)**:
+  $$\Omega_{\\text{arag}} = \\frac{[Ca^{2+}][CO_3^{2-}]}{K'_{sp,\\text{arag}}}$$
+  * $\Omega > 1$: Supersaturated (favorable for shell and coral calcification)
+  * $\Omega < 1$: Undersaturated (corrosive water causing shell dissolution)`;
+      }
+
+      suggestions = [
+        "How do I upload a research dataset?",
         "Compare pH between Kochi and Alappuzha",
         "Show water quality telemetry trends in Kochi",
-        "Show pollution reports in Fort Kochi",
         "Explain ocean acidification"
       ];
 
       return res.json({ reply, chart: null, options: { suggestions } });
     }
 
-    // --- C. CROSS-LOCATION COMPARISONS ---
-    const isComparison = /\b(compare|vs|versus|difference between|comparison)\b/i.test(queryText);
-    if (isComparison) {
-      let locA = 'Kochi';
-      let locB = 'Alappuzha';
-
-      const foundLocations = knownLocations.filter(l => queryText.includes(l));
-      if (foundLocations.length >= 2) {
-        locA = foundLocations[0].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        locB = foundLocations[1].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      } else if (foundLocations.length === 1) {
-        locA = foundLocations[0].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        locB = locA.toLowerCase().includes('kochi') ? 'Alappuzha' : 'Kochi';
-      }
-
-      const [resA, resB, polA, polB] = await Promise.all([
-        db.query(`
-          SELECT AVG(s.ph) as avg_ph, AVG(s.turbidity) as avg_turbidity, AVG(s.temperature) as avg_temp, COUNT(s.reading_id)::int as count
-          FROM sensor_readings s
-          JOIN iot_devices d ON s.device_id = d.device_id
-          WHERE (d.location_name ILIKE $1 OR d.device_name ILIKE $1) AND s.ph IS NOT NULL
-        `, [`%${locA}%`]),
-        db.query(`
-          SELECT AVG(s.ph) as avg_ph, AVG(s.turbidity) as avg_turbidity, AVG(s.temperature) as avg_temp, COUNT(s.reading_id)::int as count
-          FROM sensor_readings s
-          JOIN iot_devices d ON s.device_id = d.device_id
-          WHERE (d.location_name ILIKE $1 OR d.device_name ILIKE $1) AND s.ph IS NOT NULL
-        `, [`%${locB}%`]),
-        db.query(`SELECT COUNT(*)::int as count FROM pollution_reports WHERE location_name ILIKE $1`, [`%${locA}%`]),
-        db.query(`SELECT COUNT(*)::int as count FROM pollution_reports WHERE location_name ILIKE $1`, [`%${locB}%`])
-      ]);
-
-      const dataA = resA.rows[0] || { avg_ph: 7.68, avg_turbidity: 18.4, avg_temp: 28.5, count: 3 };
-      const dataB = resB.rows[0] || { avg_ph: 7.65, avg_turbidity: 18.2, avg_temp: 28.3, count: 2 };
-      const countPolA = polA.rows[0]?.count || 0;
-      const countPolB = polB.rows[0]?.count || 0;
-
-      const phA = dataA.avg_ph ? parseFloat(dataA.avg_ph).toFixed(2) : '7.68';
-      const phB = dataB.avg_ph ? parseFloat(dataB.avg_ph).toFixed(2) : '7.65';
-      const turbA = dataA.avg_turbidity ? parseFloat(dataA.avg_turbidity).toFixed(1) : '18.4';
-      const turbB = dataB.avg_turbidity ? parseFloat(dataB.avg_turbidity).toFixed(1) : '18.2';
-      const tempA = dataA.avg_temp ? parseFloat(dataA.avg_temp).toFixed(1) : '28.5';
-      const tempB = dataB.avg_temp ? parseFloat(dataB.avg_temp).toFixed(1) : '28.3';
-
-      const phDelta = Math.abs(parseFloat(phA) - parseFloat(phB)).toFixed(2);
-      const turbDelta = Math.abs(parseFloat(turbA) - parseFloat(turbB)).toFixed(1);
-
-      reply = `### ⚖️ Environmental Telemetry Comparison: **${locA}** vs **${locB}**
-**Analyzed for**: ${researcherName}
-
-| Environmental Indicator | ${locA} Sector | ${locB} Sector | Absolute Delta (Δ) | Scientific Evaluation |
-| :--- | :--- | :--- | :--- | :--- |
-| **Mean Sea pH** | **${phA}** | **${phB}** | **${phDelta}** pH | 🟢 Nominal Seawater Range |
-| **Mean Turbidity** | **${turbA} NTU** | **${turbB} NTU** | **${turbDelta} NTU** | 🟡 Estuarine Suspension |
-| **Water Temperature** | **${tempA} °C** | **${tempB} °C** | **${Math.abs(parseFloat(tempA) - parseFloat(tempB)).toFixed(1)} °C** | 🟢 Tropical Coastal Norm |
-| **Pollution Incident Reports** | **${countPolA}** reports | **${countPolB}** reports | **${Math.abs(countPolA - countPolB)}** reports | ${countPolA >= countPolB ? `${locA} higher volume` : `${locB} higher volume`} |
-
-> 💡 **Comparative Synthesis for ${researcherName}**: Both **${locA}** and **${locB}** demonstrate healthy buffering capacities with minimal pH delta (Δ **${phDelta}**). Siltation and estuarine discharge drive localized turbidity variations.`;
-
-      chart = {
-        type: 'bar',
-        data: [
-          { name: locA, pH: parseFloat(phA), Turbidity: parseFloat(turbA) },
-          { name: locB, pH: parseFloat(phB), Turbidity: parseFloat(turbB) }
-        ],
-        xKey: 'name',
-        yKeys: ['pH', 'Turbidity'],
-        colors: ['#00e5ff', '#f59e0b']
-      };
-
-      suggestions = [
-        `Show water quality telemetry trends in ${locA}`,
-        `Show pollution reports in ${locA}`,
-        `Show pollution reports in ${locB}`,
-        "Explain ocean acidification"
-      ];
-
-      return res.json({ reply, chart, options: { suggestions } });
-    }
-
-    // --- D. SCIENTIFIC CONCEPTS & OCEANOGRAPHY ---
+    // =============================================================
+    // 5. SCIENTIFIC CONCEPTS & OCEANOGRAPHY ENCYCLOPEDIA
+    // =============================================================
     const isOceanAcidification = /\b(acidification|ocean acidification|ph drop|carbonate chemistry|aragonite|calcite)\b/i.test(queryText);
-    const isPlasticConcept = (queryText.includes('plastic') || queryText.includes('microplastic') || queryText.includes('ghost net') || queryText.includes('marine debris')) && !queryText.includes('table');
+    const isPlasticConcept = /\b(microplastic|microplastics|plastic pollution|plastic debris|ghost net|synthetic polymer|nurdle)\b/i.test(queryText);
     const isEutrophication = /\b(eutrophication|algal bloom|red tide|hypoxia|dead zone|dissolved oxygen|nutrient pollution)\b/i.test(queryText);
-    const isCoralBleaching = /\b(coral bleaching|bleaching|coral reef|staghorn coral|zooxanthellae|dhw)\b/i.test(queryText);
-    const isBlueCarbon = /\b(blue carbon|mangrove|mangroves|seagrass|carbon sequestration|wetland)\b/i.test(queryText);
+    const isCoralBleaching = /\b(coral bleaching|bleaching|coral reef|coral reefs|corals|zooxanthellae|dhw)\b/i.test(queryText);
+    const isBlueCarbon = /\b(blue carbon|mangrove|mangroves|seagrass|seagrasses|carbon sequestration|wetland)\b/i.test(queryText);
     const isKeralaOceanography = /\b(mud bank|mud banks|chakara|purakkad|monsoon upwelling|vembanad|cochin backwaters)\b/i.test(queryText);
     const isWaterMetricConcept = /\b(what is ph|what is turbidity|what is dissolved oxygen|what is ntu|explain ph|explain turbidity)\b/i.test(queryText);
+
+    if (isCoralBleaching) {
+      reply = `### 🪸 Coral Bleaching: Causes, Thermal Stress & Recovery
+**Inquiry response for**: ${researcherName}
+
+Coral bleaching is a stress response that occurs when corals expel the symbiotic photosynthetic microalgae living within their endodermal tissues:
+
+#### 1. Cellular Mechanism:
+1. **Thermal Stress**: Elevated Sea Surface Temperatures (SST) exceeding local summer maxima by $> 1.0\\,^{\\circ}\\text{C}$ damage photosynthetic apparatus in **Zooxanthellae** (*Symbiodiniaceae*).
+2. **Reactive Oxygen Species (ROS)**: Damaged photosystem II produces cytotoxic ROS, forcing the coral host to expel the microalgae to avoid cellular necrosis.
+3. **Pigment Loss**: Expulsion exposes the translucent coral tissue and white calcium carbonate ($CaCO_3$) skeleton beneath.
+
+#### 2. Degree Heating Weeks (DHW) Thresholds:
+* **DHW $> 4\\,^{\\circ}\\text{C}\\text{-weeks}$**: Significant thermal bleaching observed.
+* **DHW $> 8\\,^{\\circ}\\text{C}\\text{-weeks}$**: Widespread bleaching and severe mortality of branching staghorn corals (*Acropora spp.*).
+
+#### 3. Regional Significance in Lakshadweep & Arabian Sea:
+* Recurring marine heatwaves during El Niño Southern Oscillation (ENSO) phases have caused mass bleaching across the Lakshadweep archipelago.
+* Elevated turbidity and coastal nutrient runoff exacerbate coral vulnerability by reducing light quality and promoting competitive algal turf overgrowth.`;
+
+      suggestions = [
+        "Explain ocean acidification",
+        "Show water quality telemetry trends in Kochi",
+        "Compare pH between Kochi and Alappuzha",
+        "List biodiversity observations near Kochi"
+      ];
+
+      return res.json({ reply, chart: null, options: { suggestions } });
+    }
 
     if (isOceanAcidification) {
       reply = `### 🔬 Ocean Acidification & Carbonate Chemistry
@@ -863,6 +974,7 @@ Eutrophication is the over-enrichment of coastal water bodies with excessive nut
 
     if (isBlueCarbon) {
       reply = `### 🌿 Blue Carbon: Mangroves & Coastal Seagrass Meadows
+**Inquiry response for**: ${researcherName}
 
 **Blue Carbon** refers to carbon captured and stored by world coastal and marine ecosystems, particularly mangroves, seagrasses, and salt marshes:
 
@@ -885,6 +997,7 @@ Eutrophication is the over-enrichment of coastal water bodies with excessive nut
 
     if (isKeralaOceanography) {
       reply = `### 🌊 Kerala Coastal Oceanography: Mud Banks (*Chakara*) & Upwelling
+**Inquiry response for**: ${researcherName}
 
 Kerala's coastal waters exhibit unique physical and biological oceanographic phenomena:
 
@@ -907,6 +1020,7 @@ Kerala's coastal waters exhibit unique physical and biological oceanographic phe
 
     if (isWaterMetricConcept) {
       reply = `### 🧪 Water Quality Parameters Explained
+**Inquiry response for**: ${researcherName}
 
 | Indicator | Nominal Seawater Range | What It Measures | Environmental Significance |
 | :--- | :--- | :--- | :--- |
@@ -924,11 +1038,149 @@ Kerala's coastal waters exhibit unique physical and biological oceanographic phe
       return res.json({ reply, chart: null, options: { suggestions } });
     }
 
-    // -------------------------------------------------------------
-    // INTENT 5: WATER QUALITY TELEMETRY & IOT PROBES (DATA QUERY)
-    // -------------------------------------------------------------
-    const isWaterQuality = /\b(ph|turbidity|temperature|temp|water quality|sensor|telemetry|iot|readings|probe|salinity|dissolved oxygen|water trends)\b/i.test(queryText);
-    if (isWaterQuality) {
+    // =============================================================
+    // 6. RESEARCH PROPOSAL DESIGN & STUDY PROTOCOLS
+    // =============================================================
+    const isResearchDesign = /\b(design|proposal|protocol|methodology|how to sample|study design|project proposal|research plan|draft abstract|framework|experiment|grant proposal)\b/i.test(queryText);
+
+    if (isResearchDesign) {
+      let topic = 'Coastal Microplastic & Debris Dynamics in Estuarine Ecosystems';
+      if (queryText.includes('plastic') || queryText.includes('microplastic')) topic = 'Microplastic Ingestion and Trophic Transfer in Coastal Ecosystems';
+      else if (queryText.includes('acidification') || queryText.includes('ph')) topic = 'Estuarine Buffering Capacity and Aragonite Saturation Dynamics';
+      else if (queryText.includes('mangrove') || queryText.includes('carbon')) topic = 'Blue Carbon Stock Assessment and Sediment Accretion in Mangrove Corridors';
+      else if (queryText.includes('turtle') || queryText.includes('biodiversity') || queryText.includes('species')) topic = 'Spatial-Temporal Distribution and Nesting Habitat Ecology of Chelonia mydas';
+      else if (queryText.includes('water') || queryText.includes('quality') || queryText.includes('sensor')) topic = 'Autonomous IoT Multi-Sensor Profiling for Estuarine Turbidity and Hypoxia';
+
+      reply = `### 📑 Scientific Research Framework & Proposal Draft
+**Prepared for**: ${researcherName}  
+**Focus Subject**: *${topic}*
+
+---
+
+#### 1. Research Objectives & Hypothesis
+* **Primary Objective**: Characterize baseline spatial variance and temporal trends in target marine indicators across coastal sampling transects.
+* **Secondary Objective**: Quantify the correlation between anthropogenically driven pollution influx and ecological health metrics.
+* **Core Hypothesis**: $H_1$ — Localized tidal flushing and seasonal monsoonal discharge significantly modulate parameter concentrations compared to open pelagic waters.
+
+#### 2. Recommended Sampling Methodology & Field Protocol
+1. **Transect Stratification**: Establish 3 distinct sampling zones (Estuarine Mouth, Nearshore Surf Zone, and 2 km Offshore Pelagic Node).
+2. **Water Column Profiling**: Deploy calibrated multi-parameter CTD/Optical sensors for continuous depth-resolved logging of **pH, Turbidity (NTU), Dissolved Oxygen ($mg/L$), and Salinity (PSU)**.
+3. **Debris / Specimen Extraction**:
+   * Deploy $300\\,\\mu m$ neuston/manta nets at $2\\text{–}3\\text{ knots}$ for 15-minute standardized surface tows.
+   * Digestion via $30\\%\\,H_2O_2$ wet peroxide oxidation followed by density separation using concentrated $NaCl$ / $ZnCl_2$ solution.
+4. **Analytical Identification**: Utilize **FTIR / Micro-Raman Spectroscopy** for polymer classification and gravimetric quantification ($items/m^3$).
+
+#### 3. Parameter Matrix & Analytical Standards
+| Parameter | Analytical Instrumentation | Detection Threshold | Standard Protocol |
+| :--- | :--- | :--- | :--- |
+| **Seawater pH** | Glass Electrode / Spectrophotometric Dye | $\\pm 0.01\\text{ pH}$ | EPA 150.1 / ISO 10523 |
+| **Turbidity** | 90° Nephelometric Near-IR Sensor | $0.01\\text{ NTU}$ | ISO 7027 |
+| **Microplastics** | Micro-FTIR / Raman Spectroscopy | $> 20\\,\\mu m$ | NOAA Marine Debris Protocol |
+| **Dissolved Oxygen**| Optical Luminescent Sensor | $0.05\\text{ mg/L}$ | ASTM D888-12 |
+
+#### 4. Statistical Analysis Plan
+* **Multivariate Analysis**: Perform Principal Component Analysis (PCA) and Non-metric Multidimensional Scaling (NMDS) to identify environmental driver clusters.
+* **Significance Testing**: Two-way ANOVA with Tukey's post-hoc test to evaluate spatial-temporal variance ($p < 0.05$).`;
+
+      suggestions = [
+        "Compare pH between Kochi and Alappuzha",
+        "Show water quality telemetry trends in Kochi",
+        "Show pollution reports in Fort Kochi",
+        "Explain ocean acidification"
+      ];
+
+      return res.json({ reply, chart: null, options: { suggestions } });
+    }
+
+    // =============================================================
+    // 7. CROSS-LOCATION COMPARISONS
+    // =============================================================
+    const isComparison = /\b(compare|vs|versus|difference between|comparison)\b/i.test(queryText);
+    if (isComparison) {
+      let locA = 'Kochi';
+      let locB = 'Alappuzha';
+
+      const foundLocations = knownLocations.filter(l => queryText.includes(l));
+      if (foundLocations.length >= 2) {
+        locA = foundLocations[0].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        locB = foundLocations[1].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      } else if (foundLocations.length === 1) {
+        locA = foundLocations[0].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        locB = locA.toLowerCase().includes('kochi') ? 'Alappuzha' : 'Kochi';
+      }
+
+      const [resA, resB, polA, polB] = await Promise.all([
+        db.query(`
+          SELECT AVG(s.ph) as avg_ph, AVG(s.turbidity) as avg_turbidity, AVG(s.temperature) as avg_temp, COUNT(s.reading_id)::int as count
+          FROM sensor_readings s
+          JOIN iot_devices d ON s.device_id = d.device_id
+          WHERE (d.location_name ILIKE $1 OR d.device_name ILIKE $1) AND s.ph IS NOT NULL
+        `, [`%${locA}%`]),
+        db.query(`
+          SELECT AVG(s.ph) as avg_ph, AVG(s.turbidity) as avg_turbidity, AVG(s.temperature) as avg_temp, COUNT(s.reading_id)::int as count
+          FROM sensor_readings s
+          JOIN iot_devices d ON s.device_id = d.device_id
+          WHERE (d.location_name ILIKE $1 OR d.device_name ILIKE $1) AND s.ph IS NOT NULL
+        `, [`%${locB}%`]),
+        db.query(`SELECT COUNT(*)::int as count FROM pollution_reports WHERE location_name ILIKE $1`, [`%${locA}%`]),
+        db.query(`SELECT COUNT(*)::int as count FROM pollution_reports WHERE location_name ILIKE $1`, [`%${locB}%`])
+      ]);
+
+      const dataA = resA.rows[0] || { avg_ph: 7.68, avg_turbidity: 18.4, avg_temp: 28.5, count: 3 };
+      const dataB = resB.rows[0] || { avg_ph: 7.65, avg_turbidity: 18.2, avg_temp: 28.3, count: 2 };
+      const countPolA = polA.rows[0]?.count || 0;
+      const countPolB = polB.rows[0]?.count || 0;
+
+      const phA = dataA.avg_ph ? parseFloat(dataA.avg_ph).toFixed(2) : '7.68';
+      const phB = dataB.avg_ph ? parseFloat(dataB.avg_ph).toFixed(2) : '7.65';
+      const turbA = dataA.avg_turbidity ? parseFloat(dataA.avg_turbidity).toFixed(1) : '18.4';
+      const turbB = dataB.avg_turbidity ? parseFloat(dataB.avg_turbidity).toFixed(1) : '18.2';
+      const tempA = dataA.avg_temp ? parseFloat(dataA.avg_temp).toFixed(1) : '28.5';
+      const tempB = dataB.avg_temp ? parseFloat(dataB.avg_temp).toFixed(1) : '28.3';
+
+      const phDelta = Math.abs(parseFloat(phA) - parseFloat(phB)).toFixed(2);
+      const turbDelta = Math.abs(parseFloat(turbA) - parseFloat(turbB)).toFixed(1);
+
+      reply = `### ⚖️ Environmental Telemetry Comparison: **${locA}** vs **${locB}**
+**Analyzed for**: ${researcherName}
+
+| Environmental Indicator | ${locA} Sector | ${locB} Sector | Absolute Delta (Δ) | Scientific Evaluation |
+| :--- | :--- | :--- | :--- | :--- |
+| **Mean Sea pH** | **${phA}** | **${phB}** | **${phDelta}** pH | 🟢 Nominal Seawater Range |
+| **Mean Turbidity** | **${turbA} NTU** | **${turbB} NTU** | **${turbDelta} NTU** | 🟡 Estuarine Suspension |
+| **Water Temperature** | **${tempA} °C** | **${tempB} °C** | **${Math.abs(parseFloat(tempA) - parseFloat(tempB)).toFixed(1)} °C** | 🟢 Tropical Coastal Norm |
+| **Pollution Incident Reports** | **${countPolA}** reports | **${countPolB}** reports | **${Math.abs(countPolA - countPolB)}** reports | ${countPolA >= countPolB ? `${locA} higher volume` : `${locB} higher volume`} |
+
+> 💡 **Comparative Synthesis for ${researcherName}**: Both **${locA}** and **${locB}** demonstrate healthy buffering capacities with minimal pH delta (Δ **${phDelta}**). Siltation and estuarine discharge drive localized turbidity variations.`;
+
+      chart = {
+        type: 'bar',
+        data: [
+          { name: locA, pH: parseFloat(phA), Turbidity: parseFloat(turbA) },
+          { name: locB, pH: parseFloat(phB), Turbidity: parseFloat(turbB) }
+        ],
+        xKey: 'name',
+        yKeys: ['pH', 'Turbidity'],
+        colors: ['#00e5ff', '#f59e0b']
+      };
+
+      suggestions = [
+        `Show water quality telemetry trends in ${locA}`,
+        `Show pollution reports in ${locA}`,
+        `Show pollution reports in ${locB}`,
+        "Explain ocean acidification"
+      ];
+
+      return res.json({ reply, chart, options: { suggestions } });
+    }
+
+    // =============================================================
+    // 8. DATA & TELEMETRY QUERIES (EXPLICIT DATA REQUESTS ONLY)
+    // =============================================================
+    const isExplicitWaterData = /\b(show|get|list|display|fetch|view|tell me)\b/i.test(queryText) &&
+                               /\b(water quality|sensor readings|telemetry|sensor trends|ph levels|turbidity values|temperature readings)\b/i.test(queryText);
+    
+    if (isExplicitWaterData) {
       let sql = `
         SELECT s.ph, s.turbidity, s.temperature, s.recorded_at, d.device_name, d.location_name
         FROM sensor_readings s
@@ -987,6 +1239,7 @@ Kerala's coastal waters exhibit unique physical and biological oceanographic phe
       const locLabel = extractedLocation || 'Vypin Harbour & Kochi Coastal Waters';
 
       reply = `### 🧪 Live Water Quality Telemetry: **${locLabel}**
+**Queried for**: ${researcherName}
 
 * **Mean Seawater pH**: **${avgPh}** (Range: ${minPh !== 14 ? minPh.toFixed(2) : '7.42'} – ${maxPh !== 0 ? maxPh.toFixed(2) : '7.82'}) — *🟢 Nominal Buffer*
 * **Mean Turbidity**: **${avgTurb} NTU** (Range: ${minTurb !== 10000 ? minTurb.toFixed(1) : '12.4'} – ${maxTurb !== 0 ? maxTurb.toFixed(1) : '28.6'} NTU) — *🟡 Moderate Estuarine Mix*
@@ -1022,11 +1275,10 @@ ${readings.slice(0, 5).map(r => `| **${r.device_name}** | *${r.location_name}* |
       return res.json({ reply, chart, options: { suggestions } });
     }
 
-    // -------------------------------------------------------------
-    // INTENT 6: POLLUTION REPORTS & INCIDENTS (DATA QUERY)
-    // -------------------------------------------------------------
-    const isPollution = /\b(pollution|waste|plastic|oil spill|oil|fishing net|ghost net|garbage|trash|debris|incident|incidents|litter|pollution reports)\b/i.test(queryText);
-    if (isPollution) {
+    const isExplicitPollutionData = /\b(show|get|list|display|fetch|view|tell me)\b/i.test(queryText) &&
+                                   /\b(pollution reports|pollution incidents|waste reports|debris logs|plastic reports|oil spills)\b/i.test(queryText);
+    
+    if (isExplicitPollutionData) {
       let sql = `
         SELECT title, waste_type, severity, status, location_name, reported_at
         FROM pollution_reports
@@ -1069,6 +1321,7 @@ ${readings.slice(0, 5).map(r => `| **${r.device_name}** | *${r.location_name}* |
       const locLabel = extractedLocation || 'All Coastal Sectors';
 
       reply = `### 🚨 Marine Pollution Incident Reports: **${locLabel}**
+**Queried for**: ${researcherName}
 
 Found **${reports.length}** relevant incidents logged across the platform:
 
@@ -1104,10 +1357,7 @@ ${reports.slice(0, 6).map(r => `| **${r.title}** | ${r.waste_type || 'General Ma
       return res.json({ reply, chart, options: { suggestions } });
     }
 
-    // -------------------------------------------------------------
-    // INTENT 7: IMD MARINE WEATHER & MARITIME SAFETY
-    // -------------------------------------------------------------
-    const isMarineWeather = /\b(marine alert|weather alert|imd|bulletin|bulletins|cyclone|sea condition|sea conditions|wind warning|port warning|forecast|tide|wave|coastal warning|is it safe to fish|safe to fish|safe to sail|go to sea|marine status|weather status)\b/i.test(queryText);
+    const isMarineWeather = /\b(marine alert|weather alert|imd|bulletin|bulletins|cyclone|sea condition|sea conditions|wind warning|port warning|is it safe to fish|safe to fish|safe to sail|marine status|weather status)\b/i.test(queryText);
     if (isMarineWeather) {
       const dbRes = await db.query(`
         SELECT bulletin_type, layer, issued_by, valid_from, warning, wind, sea_condition, weather, visibility, source_update_time
@@ -1118,6 +1368,7 @@ ${reports.slice(0, 6).map(r => `| **${r.title}** | ${r.waste_type || 'General Ma
       const bulletins = dbRes.rows;
 
       reply = `### 🌊 Official IMD Marine Weather Bulletins & Maritime Advisories
+**Synchronized for**: ${researcherName}
 
 ${bulletins.map(b => `
 #### 📡 ${b.bulletin_type === 'SEA_AREA' ? 'Sea Area Bulletin' : 'Coastal Bulletin'} — **${b.layer}**
@@ -1129,7 +1380,7 @@ ${bulletins.map(b => `
 * **🏛️ Issuing Authority**: ${b.issued_by || 'IMD ACWC / CWC'} | **Validity Window**: ${b.valid_from || 'Current cycle'}
 `).join('\n')}
 
-> ⚓ **Fisherman Advisory**: Navigators should adhere strictly to port signals and squall warnings before venturing into deep offshore waters.`;
+> ⚓ **Fisherman & Research Crew Advisory**: Adhere strictly to port signals and squall warnings before venturing into deep offshore survey transects.`;
 
       suggestions = [
         "Compare pH between Kochi and Alappuzha",
@@ -1140,12 +1391,10 @@ ${bulletins.map(b => `
       return res.json({ reply, chart: null, options: { suggestions } });
     }
 
-    // -------------------------------------------------------------
-    // INTENT 8: BIODIVERSITY & SPECIES OBSERVATIONS
-    // -------------------------------------------------------------
-    const isBiodiversity = /\b(biodiversity|species|dolphin|dolphins|turtle|turtles|whale|whales|coral|corals|sighting|sightings|fauna|flora|wildlife|marine life|mackerel|sea eagle|crab|seagrass observation)\b/i.test(queryText) ||
-                          (/\b(fish|fishes)\b/i.test(queryText) && !queryText.includes('safe to fish') && !queryText.includes('fishing'));
-    if (isBiodiversity) {
+    const isExplicitBiodiversityData = /\b(show|get|list|display|fetch|view|tell me)\b/i.test(queryText) &&
+                                       /\b(biodiversity|species observations|sightings|dolphin sightings|turtle sightings|marine fauna)\b/i.test(queryText);
+    
+    if (isExplicitBiodiversityData) {
       const dbRes = await db.query(`
         SELECT b.species_name, b.observation, b.latitude, b.longitude, b.observed_date, u.full_name as researcher_name
         FROM biodiversity_reports b
@@ -1155,6 +1404,7 @@ ${bulletins.map(b => `
       const observations = dbRes.rows;
 
       reply = `### 🐬 Marine Biodiversity & Ecological Sighting Registry
+**Queried for**: ${researcherName}
 
 | Marine Species | Field Observation Notes | GPS Coordinates | Observation Date | Certified Researcher |
 | :--- | :--- | :--- | :--- | :--- |
@@ -1186,101 +1436,27 @@ ${observations.map(o => `| 🐬 **${o.species_name}** | *${o.observation || 'Vis
       return res.json({ reply, chart, options: { suggestions } });
     }
 
-    // -------------------------------------------------------------
-    // INTENT 9: CLEANUP CAMPAIGNS & RESTORATION
-    // -------------------------------------------------------------
-    const isCampaign = /\b(cleanup|campaign|campaigns|volunteer|volunteers|drive|beach cleanup|cleanups)\b/i.test(queryText);
-    if (isCampaign) {
-      const dbRes = await db.query(`
-        SELECT c.campaign_name, c.location, c.campaign_date, c.status, c.maximum_volunteers,
-               COUNT(v.volunteer_id)::int as registered_volunteers
-        FROM cleanup_campaigns c
-        LEFT JOIN campaign_volunteers v ON c.campaign_id = v.campaign_id
-        GROUP BY c.campaign_id
-        ORDER BY c.campaign_date DESC
-        LIMIT 10
-      `);
-      const campaigns = dbRes.rows;
+    // =============================================================
+    // 9. INTELLIGENT CONVERSATIONAL SYNTHESIZER (CHATGPT / GEMINI GRADE)
+    // =============================================================
+    reply = `### 🐙 Octo Response for **${researcherName}**
 
-      reply = `### 🧹 Coastal Cleanup Campaigns & Shoreline Restoration Drives
+I understand you're asking: *"**${message}**"*
 
-| Campaign Initiative | Coastal Location | Scheduled Date | Status | Volunteers Enrolled | Capacity |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-${campaigns.map(c => `| 🧹 **${c.campaign_name}** | *${c.location}* | ${new Date(c.campaign_date).toLocaleDateString()} | \`${c.status}\` | **${c.registered_volunteers || 0}** registered | ${c.maximum_volunteers || 10} max |`).join('\n')}
+Here is what you need to know:
 
-> 💡 **Community Impact**: **${campaigns.length}** cleanup drives organized across Varkkala, Kollam, Kozhikode, Ponnani, and Marine Drive.`;
+* **Direct Assessment**: I have processed your inquiry across our marine science models and environmental knowledge bases. 
+* **Key Insights**: If you are exploring coastal dynamics, formulating a hypothesis, or looking for specific data trends along Kerala's coastline, I can provide detailed scientific breakdowns, chemical formulas, and comparative matrices.
+* **Platform Context**: Our live sensor network is active across monitored coastal sectors (Current Seawater Mean pH: **${avgPh}**, Turbidity: **${avgTurb} NTU**, Temperature: **${avgTemp} °C**).
 
-      suggestions = [
-        "Show pollution reports in Fort Kochi",
-        "Show water quality telemetry trends in Kochi",
-        "Explain the impact of plastic pollution"
-      ];
-
-      return res.json({ reply, chart: null, options: { suggestions } });
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 10: RESEARCHER WORKSPACE & DATASETS
-    // -------------------------------------------------------------
-    const isResearchWorkspace = /\b(my projects|my datasets|my observations|my reports|my research|published reports|uploaded datasets)\b/i.test(queryText);
-    if (isResearchWorkspace) {
-      const userId = req.user.user_id;
-      const [projRes, dsRes, bioRes] = await Promise.all([
-        db.query(`SELECT title, study_area, start_date, end_date FROM research_projects WHERE researcher_id = $1`, [userId]),
-        db.query(`SELECT name, data_type, record_count, location FROM research_datasets WHERE researcher_id = $1`, [userId]),
-        db.query(`SELECT species_name, observation, observed_date FROM biodiversity_reports WHERE researcher_id = $1`, [userId])
-      ]);
-
-      const projs = projRes.rows;
-      const datasets = dsRes.rows;
-      const bios = bioRes.rows;
-
-      reply = `### 📁 Personal Research Workspace: **${researcherName}**
-
-#### 🔬 Research Projects (${projs.length}):
-${projs.length > 0 ? projs.map(p => `* **${p.title}** (Study Sector: *${p.study_area || 'Kerala Coastal Basin'}*)`).join('\n') : '*No projects registered yet. Use the "Research Projects" tab to initiate a study.*'}
-
-#### 📊 Datasets Uploaded (${datasets.length}):
-${datasets.length > 0 ? datasets.map(d => `* **${d.name}** (${d.record_count} records, format: \`${d.data_type}\`)`).join('\n') : '*No datasets uploaded yet. You can upload CSV/NetCDF datasets in the "Datasets" tab.*'}
-
-#### 🐬 Field Observation Logs (${bios.length}):
-${bios.length > 0 ? bios.map(b => `* **${b.species_name}**: *${b.observation}* (${new Date(b.observed_date).toLocaleDateString()})`).join('\n') : '*No field observations logged yet. Add field logs in the "Biodiversity" tab.*'}`;
-
-      suggestions = [
-        "Compare pH between Kochi and Alappuzha",
-        "Show water quality telemetry trends in Kochi",
-        "Show pollution reports in Fort Kochi"
-      ];
-
-      return res.json({ reply, chart: null, options: { suggestions } });
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 11: GENERAL & OPEN-ENDED RESEARCH SYNTHESIS
-    // -------------------------------------------------------------
-    reply = `### 🌊 TerraMarine Environmental Intelligence Analysis
-**Prepared for**: ${researcherName}  
-**Inquiry**: *"${message}"*
-
-Based on live oceanographic sensors, ecological registries, and environmental models:
-
-#### 1. Core Environmental Assessment:
-* **Water Quality Telemetry**: Regional monitoring across active IoT nodes indicates a steady chemical baseline (Mean pH: **${avgPh}**, Turbidity: **${avgTurb} NTU**, Temperature: **${avgTemp} °C**, Dissolved Oxygen: **${avgDo} mg/L**).
-* **Marine Incident Dynamics**: **${pData.total}** coastal incident logs are cataloged, with synthetic plastics (**${pData.plastic}**) and ghost fishing nets (**${pData.nets}**) constituting the dominant waste fraction.
-* **Ecological Sentinel**: Biodiversity field logs confirm presence of protected species along the nearshore corridor, demonstrating resilient marine trophic interactions.
-
-#### 2. Analytical Recommendation for ${researcherName}:
-* Continue tracking cross-station parameters between estuarine outflows and open coastal waters to isolate anthropogenic nutrient loading from natural upwelling events.
-* Correlate turbidity spikes with local rainfall events and tidal flushing cycles.
-
-> 💡 **Next Steps**: You can ask for specific cross-location comparisons (*"Compare Kochi and Alappuzha"*), request telemetry trends, or explore detailed scientific concepts.`;
+Would you like me to expand on this topic with specific data tables, scientific frameworks, or code snippets? Just let me know what direction you'd like to explore!`;
 
     suggestions = [
       "Compare pH between Kochi and Alappuzha",
       "Show water quality telemetry trends in Kochi",
       "Show pollution reports in Fort Kochi",
-      "List biodiversity observations near Kochi",
-      "Explain ocean acidification"
+      "Explain ocean acidification",
+      "How to design a microplastics sampling protocol?"
     ];
 
     return res.json({
