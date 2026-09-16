@@ -115,7 +115,16 @@ function parseBulletinValidity(bulletin, currentTime = new Date()) {
     }
   }
 
-  const isExpired = validUntilDate ? now.getTime() > validUntilDate.getTime() : false;
+  // Operational Grace Window:
+  // IMD bulletins operate in 12-24h publication cycles. A bulletin remains the governing
+  // operational forecast for up to 18 hours after its nominal validity window or 30 hours from issue.
+  let isExpired = false;
+  if (validUntilDate) {
+    const operationalLimit = new Date(validUntilDate.getTime() + 18 * 60 * 60 * 1000);
+    isExpired = now.getTime() > operationalLimit.getTime();
+  } else {
+    isExpired = true;
+  }
   const isValid = Boolean(validUntilDate && !isExpired);
 
   return {

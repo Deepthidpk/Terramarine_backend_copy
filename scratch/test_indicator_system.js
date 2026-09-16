@@ -22,6 +22,7 @@ const ponnaniLocation = {
   coastalArea: 'Ponnani Light House & Harbour'
 };
 const ponnaniCoverage = resolveImdCoverage('Kerala', 'Malappuram', 'Ponnani Municipality', 'Ponnani Light House & Harbour');
+const mockTime = new Date('2026-09-13T15:00:00.000Z');
 
 // ----------------------------------------------------
 // TEST 1: No official warning + normal conditions
@@ -36,8 +37,8 @@ try {
     weather: 'Mainly Dry / Clear Skies',
     visibility: 'Good Visibility'
   };
-  const marine = calculateMarineAlert({ coastalBulletin: normalCoastal, location: ponnaniLocation, coverage: ponnaniCoverage });
-  const weather = calculateWeatherAlert({ coastalBulletin: normalCoastal, location: ponnaniLocation, coverage: ponnaniCoverage });
+  const marine = calculateMarineAlert({ coastalBulletin: normalCoastal, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
+  const weather = calculateWeatherAlert({ coastalBulletin: normalCoastal, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
   const overall = calculateOverallSafety(marine, weather);
 
   assert.strictEqual(marine.level, 'GREEN', 'Test 1 Marine must be GREEN');
@@ -62,7 +63,7 @@ try {
     weather: 'Clear Skies',
     visibility: 'Good'
   };
-  const marine = calculateMarineAlert({ coastalBulletin: moderateCoastal, location: ponnaniLocation, coverage: ponnaniCoverage });
+  const marine = calculateMarineAlert({ coastalBulletin: moderateCoastal, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
   assert.strictEqual(marine.level, 'YELLOW', 'Test 2 Marine must be YELLOW');
   assert.strictEqual(marine.label, 'CAUTION');
   console.log('✅ TEST 2 PASSED: Moderate marine condition produces Marine YELLOW (Caution)');
@@ -84,7 +85,7 @@ try {
     weather: 'Scattered Rain / Thunderstorm',
     visibility: 'Moderate becoming poor in rain'
   };
-  const weather = calculateWeatherAlert({ coastalBulletin: rainCoastal, location: ponnaniLocation, coverage: ponnaniCoverage });
+  const weather = calculateWeatherAlert({ coastalBulletin: rainCoastal, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
   assert.strictEqual(weather.level, 'YELLOW', 'Test 3 Weather must be YELLOW');
   assert.strictEqual(weather.label, 'CAUTION');
   console.log('✅ TEST 3 PASSED: Thunderstorm / rain produces Weather YELLOW (Caution)');
@@ -106,8 +107,8 @@ try {
     weather: 'Partly Cloudy',
     visibility: 'Good'
   };
-  const marine = calculateMarineAlert({ coastalBulletin: roughMarine, location: ponnaniLocation, coverage: ponnaniCoverage });
-  const weather = calculateWeatherAlert({ coastalBulletin: roughMarine, location: ponnaniLocation, coverage: ponnaniCoverage });
+  const marine = calculateMarineAlert({ coastalBulletin: roughMarine, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
+  const weather = calculateWeatherAlert({ coastalBulletin: roughMarine, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
   const overall = calculateOverallSafety(marine, weather);
 
   assert.strictEqual(marine.level, 'RED', 'Test 4 Marine must be RED');
@@ -132,8 +133,8 @@ try {
     weather: 'Severe Thunderstorm / Cyclonic Storm with Extremely Heavy Rain',
     visibility: 'Very Poor'
   };
-  const weather = calculateWeatherAlert({ coastalBulletin: severeWeather, location: ponnaniLocation, coverage: ponnaniCoverage });
-  const marine = calculateMarineAlert({ coastalBulletin: severeWeather, location: ponnaniLocation, coverage: ponnaniCoverage });
+  const weather = calculateWeatherAlert({ coastalBulletin: severeWeather, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
+  const marine = calculateMarineAlert({ coastalBulletin: severeWeather, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
   const overall = calculateOverallSafety(marine, weather);
 
   assert.strictEqual(weather.level, 'RED', 'Test 5 Weather must be RED');
@@ -202,7 +203,6 @@ try {
 // Expected: Expired bulletin is rejected from active alert
 // ----------------------------------------------------
 try {
-  const oldDate = new Date('2026-09-10T12:00:00.000Z');
   const checkTime = new Date('2026-09-13T12:00:00.000Z');
   const expiredBulletin = {
     validFrom: 'Bulletin Valid for 12 hrs from 10 UTC of 2026-09-09 to 22 UTC of 2026-09-09',
@@ -243,7 +243,7 @@ try {
     visibility: 'Good'
   };
 
-  const marine = calculateMarineAlert({ coastalBulletin: coastalWithLakshadweepWarn, location: ponnaniLocation, coverage: ponnaniCoverage });
+  const marine = calculateMarineAlert({ coastalBulletin: coastalWithLakshadweepWarn, location: ponnaniLocation, coverage: ponnaniCoverage, currentTime: mockTime });
   assert.strictEqual(marine.level, 'GREEN', 'Ponnani must remain GREEN when warning is only for Lakshadweep');
   console.log('✅ TEST 10 PASSED: Lakshadweep warning is successfully isolated and not applied to Ponnani fisherman');
   passedTests++;
@@ -296,7 +296,7 @@ try {
     weather: 'Clear',
     visibility: 'Good'
   };
-  const marineSouth = calculateMarineAlert({ coastalBulletin: coastalForSouth, location: vizhinjamLocation, coverage: vizhinjamCoverage });
+  const marineSouth = calculateMarineAlert({ coastalBulletin: coastalForSouth, location: vizhinjamLocation, coverage: vizhinjamCoverage, currentTime: mockTime });
   assert.strictEqual(marineSouth.level, 'YELLOW', 'Vizhinjam must receive Yellow advisory due to wave alert');
 
   console.log('✅ TEST 12 PASSED: Registered location change properly recalculates indicators for new location');

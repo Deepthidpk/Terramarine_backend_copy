@@ -137,7 +137,8 @@ exports.getRelevantAlerts = async (req, res) => {
     }
 
     const userObj = userRes.rows[0];
-    const data = await marineService.getRelevantAlertsForFisherman(userObj);
+    const forceRefresh = req.query.refresh === 'true' || req.query.force === 'true';
+    const data = await marineService.getRelevantAlertsForFisherman(userObj, forceRefresh);
 
     return res.json(data);
   } catch (error) {

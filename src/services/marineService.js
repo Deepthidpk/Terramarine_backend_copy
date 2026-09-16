@@ -318,7 +318,7 @@ const {
  * Reads user's DB location, resolves IMD coverage region, filters bulletins,
  * evaluates official warning status, and returns ONLY relevant bulletins.
  */
-const getRelevantAlertsForFisherman = async (user) => {
+const getRelevantAlertsForFisherman = async (user, force = false) => {
   if (!user) {
     throw new Error('User context required');
   }
@@ -332,9 +332,9 @@ const getRelevantAlertsForFisherman = async (user) => {
   const coverage = resolveImdCoverage(state, district, municipality, coastalArea);
   const locationObj = { state, district, municipality, coastalArea };
 
-  // 2. Make sure marine bulletins are synced
+  // 2. Make sure marine bulletins are synced (force if requested)
   try {
-    await syncMarineBulletins(false);
+    await syncMarineBulletins(force);
   } catch (err) {}
 
   // 3. Retrieve all Coastal and Sea Area bulletins from DB
@@ -354,6 +354,13 @@ const getRelevantAlertsForFisherman = async (user) => {
       const bLayer = (b.layer || '').toLowerCase();
       return coverage.layerKeywords.some(kw => bLayer.includes(kw));
     });
+  }
+  // Fallback for Kerala coastal if specific sub-district bulletin is combined under South Kerala / Kerala Coast
+  if (!relevantCoastal && coverage.state === 'Kerala') {
+    relevantCoastal = coastalBulletins.find(b => {
+      const bLayer = (b.layer || '').toLowerCase();
+      return bLayer.includes('kerala') || bLayer.includes('south coast');
+    }) || null;
   }
 
   // 6. Strictly filter Sea Area Bulletins by coverage sea area keywords
