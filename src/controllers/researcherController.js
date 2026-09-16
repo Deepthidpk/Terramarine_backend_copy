@@ -490,19 +490,20 @@ I cannot assist with queries requesting passwords, API keys, database credential
     if (apiKey) {
       try {
         const bulletinsSummary = bulletins.map(b => `${b.layer}: ${b.warning || 'Normal'} (Sea: ${b.sea_condition || 'Normal'}, Wind: ${b.wind || 'Light'})`).join('; ') || 'Arabian Sea coastal bulletins nominal';
-        const systemPrompt = `You are TerraMarine AI, an advanced conversational marine and coastal environmental intelligence assistant (like ChatGPT/Gemini), speaking with ${researcherName} (a marine researcher).
+        const systemPrompt = `You are Octo (🐙), an advanced conversational marine and coastal environmental intelligence assistant (like ChatGPT/Gemini) built into TerraMarine, speaking with ${researcherName} (a marine researcher). Your name is Octo.
 
 Instructions:
 1. Always address ${researcherName} politely by their name.
-2. Directly, intelligently, and thoroughly answer the researcher's query: "${message}".
-3. Use clean GitHub Markdown formatting with clear headings, bold text, bullet points, and math/chemical equations ($CO_2 + H_2O \\rightleftharpoons H_2CO_3$) where appropriate.
-4. Integrate live TerraMarine platform context when relevant:
+2. If asked about your identity or name, clearly state that your name is Octo.
+3. Directly, intelligently, and thoroughly answer the researcher's query: "${message}".
+4. Use clean GitHub Markdown formatting with clear headings, bold text, bullet points, and math/chemical equations ($CO_2 + H_2O \\rightleftharpoons H_2CO_3$) where appropriate.
+5. Integrate live TerraMarine platform context when relevant:
    - Live Water Telemetry: Mean pH ${avgPh}, Mean Turbidity ${avgTurb} NTU, Mean Temp ${avgTemp} °C (${sData.total_readings} transmissions).
    - Pollution Catalog: ${pData.total} incidents (${pData.plastic} plastics, ${pData.nets} fishing nets, ${pData.oil} oil spills, ${pData.high} high severity).
    - Biodiversity Registry: ${bData.total_bio} field logs across species (${bData.species_list || 'Sea Turtles, Indian Humpback Dolphins, Mackerel'}).
    - Cleanups: ${cData.total_campaigns} campaigns (${cData.active} active).
    - IMD Radar: ${bulletinsSummary}.
-5. Provide actionable research recommendations or relevant next steps.`;
+6. Provide actionable research recommendations or relevant next steps.`;
 
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
         const geminiResponse = await fetch(geminiUrl, {
@@ -536,7 +537,7 @@ Instructions:
     }
 
     // -------------------------------------------------------------
-    // 4. ADVANCED NATIVE CONVERSATIONAL AI ENGINE (FULL CHATGPT-GRADE)
+    // 4. ADVANCED NATIVE CONVERSATIONAL AI ENGINE (OCTO INTELLIGENCE)
     // -------------------------------------------------------------
     let reply = '';
     let chart = null;
@@ -565,14 +566,39 @@ Instructions:
       }
     }
 
-    // --- A. PURE GREETINGS & CASUAL CONVERSATION ---
+    // --- A. PURE GREETINGS, IDENTITY & CASUAL CONVERSATION ---
     const isPureGreeting = /^(hi+|hey+|hello+|namaste|good\s*(morning|afternoon|evening|day)|greetings|howdy)\b/i.test(queryText) && queryText.length <= 25;
-    const isCasualChat = /^(how are you|how do you do|what's up|whats up|how's it going|who are you|what can you do|help me$|about yourself)\b/i.test(queryText);
+    const isIdentityQuery = /(your name|who are you|what are you called|what is your name|who made you|about yourself)\b/i.test(queryText);
+    const isCasualChat = /^(how are you|how do you do|what's up|whats up|how's it going|help me$)\b/i.test(queryText);
+
+    if (isIdentityQuery) {
+      reply = `My name is **Octo** 🐙! 
+
+I am your dedicated **TerraMarine AI Environmental Intelligence Assistant**, designed specifically for marine scientists and coastal researchers like you, **${researcherName}**.
+
+### 🌊 What Octo can do for you:
+* **Real-time Seawater Analytics**: Query IoT sensor parameters (Mean pH: **${avgPh}**, Turbidity: **${avgTurb} NTU**, Temp: **${avgTemp} °C**)
+* **Pollution Forensics**: Inspect **${pData.total}** community reports for plastics, ghost nets, and chemical hotspots
+* **Biodiversity Tracking**: Analyze species observations and ecosystem vulnerability indexes
+* **Comparative Cross-Station Metrics**: Visualize station deltas with automatic Recharts graphs
+* **Study & Framework Design**: Generate scientific research proposals and EPA/ISO field sampling protocols
+
+How can Octo assist your research today?`;
+
+      suggestions = [
+        "Compare pH between Kochi and Alappuzha",
+        "Show water quality telemetry trends in Kochi",
+        "Explain ocean acidification",
+        "How to design a microplastics sampling protocol?"
+      ];
+
+      return res.json({ reply, chart: null, options: { suggestions } });
+    }
 
     if (isPureGreeting) {
-      reply = `Hello **${researcherName}**! 👋 
+      reply = `Hello **${researcherName}**! 🐙 
 
-I am your **TerraMarine AI Environmental Intelligence Assistant**. How can I assist you with your marine research and coastal analytics today?
+I am **Octo**, your **TerraMarine AI Environmental Intelligence Assistant**. How can I assist you with your marine research and coastal analytics today?
 
 ### 🔬 What I can help you with:
 * **🌊 Ocean Telemetry**: Analyze live seawater parameters (Mean pH: **${avgPh}**, Turbidity: **${avgTurb} NTU**, Temp: **${avgTemp} °C**)
@@ -597,7 +623,7 @@ Feel free to ask any question or select a quick action below!`;
     if (isCasualChat) {
       reply = `I am doing great, **${researcherName}**! Thank you for asking. 😊
 
-As your dedicated **TerraMarine AI Assistant**, I am continuously monitoring live IoT buoy telemetry, community pollution reports, IMD weather feeds, and marine science repositories.
+As **Octo**, your dedicated marine research AI assistant, I am continuously monitoring live IoT buoy telemetry, community pollution reports, IMD weather feeds, and marine science repositories.
 
 Whether you need to:
 1. Formulate a marine scientific hypothesis or design a field survey
@@ -605,7 +631,7 @@ Whether you need to:
 3. Analyze marine debris and ghost net hotspots
 4. Understand complex oceanographic dynamics (e.g., ocean acidification, upwelling, blue carbon)
 
-Just let me know what you are working on, and I will be glad to assist!`;
+Just let me know what you are working on, and Octo will be glad to assist!`;
 
       suggestions = [
         "Compare pH between Kochi and Alappuzha",
