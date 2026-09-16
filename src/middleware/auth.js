@@ -55,6 +55,8 @@ const authMiddleware = async (req, res, next) => {
 
     req.user = {
       ...verified,
+      full_name: dbUser.full_name || verified.name || verified.full_name || 'Researcher',
+      name: dbUser.full_name || verified.name || verified.full_name || 'Researcher',
       status: dbUser.status,
       district: dbUser.district || verified.district,
       organization_name: dbUser.organization_name || verified.organization_name,
