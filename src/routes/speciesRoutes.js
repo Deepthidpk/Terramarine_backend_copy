@@ -25,7 +25,22 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024 } // 15MB max
 });
 
-// Can be viewed by all authenticated users (or public)
+// Category endpoints (MUST be defined before /:id)
+router.get('/categories', speciesController.getSpeciesCategories);
+router.post(
+  '/categories',
+  authMiddleware,
+  requireRole(['Authority', 'Admin']),
+  speciesController.addSpeciesCategory
+);
+router.delete(
+  '/categories/:id',
+  authMiddleware,
+  requireRole(['Authority', 'Admin']),
+  speciesController.deleteSpeciesCategory
+);
+
+// Species Catalog endpoints
 router.get('/', speciesController.getAllSpecies);
 router.get('/:id', speciesController.getSpeciesById);
 

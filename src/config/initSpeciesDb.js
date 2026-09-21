@@ -1,5 +1,16 @@
 const db = require('./db');
 
+const initialCategories = [
+  'Mammals',
+  'Fish',
+  'Reptiles',
+  'Corals',
+  'Crustaceans',
+  'Microorganisms',
+  'Plants',
+  'Coastal Birds'
+];
+
 const initialSpecies = [
   {
     name: 'Green Sea Turtle',
@@ -104,7 +115,31 @@ const initialSpecies = [
 
 const initSpeciesDb = async () => {
   try {
-    // 1. Create table
+    // 1. Create species_categories table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS species_categories (
+        category_id SERIAL PRIMARY KEY,
+        name VARCHAR(100) UNIQUE NOT NULL,
+        is_default BOOLEAN DEFAULT FALSE,
+        created_by UUID REFERENCES users(user_id) ON DELETE SET NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Seed default categories if empty
+    const catCheck = await db.query('SELECT COUNT(*)::int as count FROM species_categories');
+    if (catCheck.rows[0].count === 0) {
+      for (const catName of initialCategories) {
+        await db.query(`
+          INSERT INTO species_categories (name, is_default)
+          VALUES ($1, true)
+          ON CONFLICT (name) DO NOTHING;
+        `, [catName]);
+      }
+      console.log('Seeded default species categories successfully.');
+    }
+
+    // 2. Create species_catalog table
     await db.query(`
       CREATE TABLE IF NOT EXISTS species_catalog (
         species_id SERIAL PRIMARY KEY,
@@ -123,7 +158,7 @@ const initSpeciesDb = async () => {
       );
     `);
 
-    // 2. Check if table is empty, seed if needed
+    // 3. Seed initial species if empty
     const countRes = await db.query('SELECT COUNT(*)::int as count FROM species_catalog');
     if (countRes.rows[0].count === 0) {
       console.log('Seeding initial marine species catalog into PostgreSQL...');

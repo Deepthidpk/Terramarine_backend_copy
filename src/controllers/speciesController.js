@@ -1,5 +1,9 @@
 const db = require('../config/db');
 
+// =========================================================================
+// 1. Species Catalog CRUD
+// =========================================================================
+
 // Get all marine species
 exports.getAllSpecies = async (req, res) => {
   try {
@@ -248,5 +252,83 @@ exports.deleteSpecies = async (req, res) => {
   } catch (error) {
     console.error('Delete Species Error:', error);
     res.status(500).json({ error: 'Server error deleting species.' });
+  }
+};
+
+// =========================================================================
+// 2. Species Categories Management
+// =========================================================================
+
+// Get All Species Categories
+exports.getSpeciesCategories = async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT category_id as id, category_id, name, is_default, created_at
+      FROM species_categories
+      ORDER BY category_id ASC
+    `);
+    res.json({ categories: result.rows });
+  } catch (error) {
+    console.error('Get Species Categories Error:', error);
+    res.status(500).json({ error: 'Server error retrieving species categories.' });
+  }
+};
+
+// Add New Species Category (Authority, Admin)
+exports.addSpeciesCategory = async (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Taxonomy category name is required.' });
+  }
+
+  const categoryName = name.trim();
+  const userId = req.user?.user_id || null;
+
+  try {
+    const check = await db.query('SELECT * FROM species_categories WHERE LOWER(name) = LOWER($1)', [categoryName]);
+    if (check.rows.length > 0) {
+      return res.status(400).json({ error: 'A taxonomy category with this name already exists.' });
+    }
+
+    const result = await db.query(`
+      INSERT INTO species_categories (name, is_default, created_by)
+      VALUES ($1, false, $2)
+      RETURNING category_id as id, category_id, name, is_default, created_at
+    `, [categoryName, userId]);
+
+    res.status(201).json({
+      message: 'New taxonomy category created successfully!',
+      category: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Add Species Category Error:', error);
+    res.status(500).json({ error: 'Server error creating taxonomy category.' });
+  }
+};
+
+// Delete Species Category (Authority, Admin)
+exports.deleteSpeciesCategory = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const check = await db.query('SELECT * FROM species_categories WHERE category_id = $1', [id]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Taxonomy category not found.' });
+    }
+
+    const categoryName = check.rows[0].name;
+
+    // Check if any species is currently using this category
+    const countCheck = await db.query('SELECT COUNT(*)::int as count FROM species_catalog WHERE category = $1', [categoryName]);
+    if (countCheck.rows[0].count > 0) {
+      return res.status(400).json({ 
+        error: `Cannot delete category "${categoryName}" because ${countCheck.rows[0].count} species in the catalog are currently assigned to it. Please reassign those species first.` 
+      });
+    }
+
+    await db.query('DELETE FROM species_categories WHERE category_id = $1', [id]);
+    res.json({ message: `Taxonomy category "${categoryName}" deleted successfully.` });
+  } catch (error) {
+    console.error('Delete Species Category Error:', error);
+    res.status(500).json({ error: 'Server error deleting taxonomy category.' });
   }
 };
