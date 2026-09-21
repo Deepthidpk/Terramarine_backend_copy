@@ -88,16 +88,74 @@ exports.createSpecies = async (req, res) => {
     image_url
   } = req.body;
 
-  const finalScientificName = scientific_name || scientificName;
+  const finalScientificName = (scientific_name || scientificName || '').trim();
+  const trimmedName = (name || '').trim();
+  const trimmedCat = (category || '').trim();
 
-  if (!name || !name.trim()) {
+  // 1. Common Name validation
+  if (!trimmedName) {
     return res.status(400).json({ error: 'Species common name is required.' });
   }
-  if (!finalScientificName || !finalScientificName.trim()) {
-    return res.status(400).json({ error: 'Scientific name is required.' });
+  if (trimmedName.length < 3) {
+    return res.status(400).json({ error: 'Common name must be at least 3 characters long.' });
   }
-  if (!category || !category.trim()) {
+  if (trimmedName.length > 100) {
+    return res.status(400).json({ error: 'Common name cannot exceed 100 characters.' });
+  }
+  if (!/^[a-zA-Z0-9\s\-()']+$/.test(trimmedName)) {
+    return res.status(400).json({ error: 'Common name can only contain letters, digits, spaces, hyphens, and parentheses.' });
+  }
+
+  // 2. Scientific Name validation
+  if (!finalScientificName) {
+    return res.status(400).json({ error: 'Scientific taxonomy name is required.' });
+  }
+  if (finalScientificName.length < 3) {
+    return res.status(400).json({ error: 'Scientific taxonomy must be at least 3 characters long.' });
+  }
+  if (finalScientificName.length > 100) {
+    return res.status(400).json({ error: 'Scientific taxonomy cannot exceed 100 characters.' });
+  }
+  if (!/^[a-zA-Z0-9\s\-.'()]+$/.test(finalScientificName)) {
+    return res.status(400).json({ error: 'Scientific taxonomy can only contain letters, digits, spaces, hyphens, periods, and parentheses.' });
+  }
+
+  // 3. Category validation
+  if (!trimmedCat) {
     return res.status(400).json({ error: 'Taxonomy category is required.' });
+  }
+
+  // 4. Habitat validation if provided
+  const trimmedHabitat = (habitat || '').trim();
+  if (trimmedHabitat) {
+    if (trimmedHabitat.length < 3) {
+      return res.status(400).json({ error: 'Typical habitat must be at least 3 characters long.' });
+    }
+    if (trimmedHabitat.length > 300) {
+      return res.status(400).json({ error: 'Typical habitat cannot exceed 300 characters.' });
+    }
+  }
+
+  // 5. Threats validation if provided
+  const trimmedThreats = (threats || '').trim();
+  if (trimmedThreats) {
+    if (trimmedThreats.length < 3) {
+      return res.status(400).json({ error: 'Anthropogenic threats must be at least 3 characters long.' });
+    }
+    if (trimmedThreats.length > 300) {
+      return res.status(400).json({ error: 'Anthropogenic threats cannot exceed 300 characters.' });
+    }
+  }
+
+  // 6. Notes validation if provided
+  const trimmedNotes = (notes || '').trim();
+  if (trimmedNotes) {
+    if (trimmedNotes.length < 5) {
+      return res.status(400).json({ error: 'Research field notes must be at least 5 characters long.' });
+    }
+    if (trimmedNotes.length > 1000) {
+      return res.status(400).json({ error: 'Research field notes cannot exceed 1000 characters.' });
+    }
   }
 
   let imageUrl = image_url || null;
@@ -277,11 +335,21 @@ exports.getSpeciesCategories = async (req, res) => {
 // Add New Species Category (Authority, Admin)
 exports.addSpeciesCategory = async (req, res) => {
   const { name } = req.body;
-  if (!name || !name.trim()) {
+  const categoryName = (name || '').trim();
+
+  if (!categoryName) {
     return res.status(400).json({ error: 'Taxonomy category name is required.' });
   }
+  if (categoryName.length < 3) {
+    return res.status(400).json({ error: 'Taxonomy category name must be at least 3 characters long.' });
+  }
+  if (categoryName.length > 40) {
+    return res.status(400).json({ error: 'Taxonomy category name cannot exceed 40 characters.' });
+  }
+  if (!/^[a-zA-Z0-9\s\-]+$/.test(categoryName)) {
+    return res.status(400).json({ error: 'Category name can only contain letters, numbers, spaces, and hyphens.' });
+  }
 
-  const categoryName = name.trim();
   const userId = req.user?.user_id || null;
 
   try {
