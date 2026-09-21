@@ -346,8 +346,8 @@ exports.addSpeciesCategory = async (req, res) => {
   if (categoryName.length > 40) {
     return res.status(400).json({ error: 'Taxonomy category name cannot exceed 40 characters.' });
   }
-  if (!/^[a-zA-Z0-9\s\-]+$/.test(categoryName)) {
-    return res.status(400).json({ error: 'Category name can only contain letters, numbers, spaces, and hyphens.' });
+  if (!/^[a-zA-Z\s]+$/.test(categoryName)) {
+    return res.status(400).json({ error: 'Category name can only contain alphabet letters and spaces.' });
   }
 
   const userId = req.user?.user_id || null;
