@@ -14,7 +14,8 @@ const authMiddleware = async (req, res, next) => {
     
     // Check real-time user status in Database
     const userRes = await db.query(
-      `SELECT user_id, email, role, full_name, status, organization_name, district, state 
+      `SELECT user_id, email, role, full_name, status, organization_name, district, state,
+              location_state, location_district, location_municipality, location_coastal_area, location_completed
        FROM users WHERE user_id = $1`,
       [verified.user_id]
     );
@@ -54,9 +55,16 @@ const authMiddleware = async (req, res, next) => {
 
     req.user = {
       ...verified,
+      full_name: dbUser.full_name || verified.name || verified.full_name || 'Researcher',
+      name: dbUser.full_name || verified.name || verified.full_name || 'Researcher',
       status: dbUser.status,
       district: dbUser.district || verified.district,
-      organization_name: dbUser.organization_name || verified.organization_name
+      organization_name: dbUser.organization_name || verified.organization_name,
+      location_state: dbUser.location_state,
+      location_district: dbUser.location_district,
+      location_municipality: dbUser.location_municipality,
+      location_coastal_area: dbUser.location_coastal_area,
+      location_completed: Boolean(dbUser.location_completed)
     };
     
     next();

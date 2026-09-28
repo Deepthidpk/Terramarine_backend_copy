@@ -42,20 +42,27 @@ const authorityRoutes = require('./routes/authorityRoutes');
 const certificateRoutes = require('./routes/certificateRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const marineRoutes = require('./routes/marineRoutes');
+const speciesRoutes = require('./routes/speciesRoutes');
 const initCategoryDb = require('./config/initCategoryDb');
 const initMarineDb = require('./config/initMarineDb');
+const initLocationDb = require('./config/initLocationDb');
+const initSpeciesDb = require('./config/initSpeciesDb');
 
-// Initialize category, waste type, and marine DB tables and schema alterations
+// Initialize category, waste type, marine, location, and species DB tables and schema alterations
 initCategoryDb();
 initMarineDb();
+initLocationDb();
+initSpeciesDb();
 
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/alerts', alertRoutes);
+app.use('/api/fisherman', marineRoutes);
 app.use('/api/fisherman/marine', marineRoutes);
 app.use('/api/researcher', researcherRoutes);
+app.use('/api/species', speciesRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);

@@ -197,8 +197,49 @@ const fetchCoastalBulletins = async (bulletinId = null) => {
   return uniqueResults;
 };
 
+/**
+ * Service function to fetch IMD Port Warnings
+ */
+const fetchPortWarnings = async (portId = null) => {
+  try {
+    let url = process.env.IMD_PORT_WARNING_URL || 'https://api.imd.gov.in/api/v1/portwarning';
+    if (portId) {
+      url += `?id=${encodeURIComponent(portId)}`;
+    }
+
+    const reqHeaders = {};
+    if (process.env.IMD_API_KEY) {
+      reqHeaders['Authorization'] = `Bearer ${process.env.IMD_API_KEY}`;
+      reqHeaders['x-api-key'] = process.env.IMD_API_KEY;
+    }
+
+    const response = await httpGet(url, 8000, reqHeaders);
+    const parsed = JSON.parse(response.data);
+    let list = [];
+    if (Array.isArray(parsed)) list = parsed;
+    else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.data)) list = parsed.data;
+      else if (parsed.Id || parsed.id || parsed["Port Id"] || parsed["Port Name"]) list = [parsed];
+    }
+    return list.map(item => ({
+      source: 'IMD',
+      bulletinType: 'PORT_WARNING',
+      portId: String(item["Port Id"] || item.port_id || item.portId || item.id || item.Id || `PORT_${Date.now()}`),
+      portName: String(item["Port Name"] || item.port_name || item.portName || '').trim(),
+      warning: String(item["Warning"] || item["TTT Warning"] || item.warning || item["Port Signal"] || item.signal || 'NIL').trim(),
+      signal: String(item["Port Signal"] || item.signal || item["Warning Signal"] || 'NIL').trim(),
+      issuedBy: String(item["Issued By"] || item["Issued by"] || item.issued_by || item.issuedBy || 'IMD').trim(),
+      dateOfIssue: String(item["Date of Issue"] || item["Date of issue"] || item.date_of_issue || item.issue_time || new Date().toISOString().split('T')[0]).trim(),
+      rawResponse: item
+    }));
+  } catch (err) {
+    return [];
+  }
+};
+
 module.exports = {
   fetchCoastalBulletins,
+  fetchPortWarnings,
   normalizeCoastalBulletin,
   parseImdCoastalHtmlBulletin
 };
