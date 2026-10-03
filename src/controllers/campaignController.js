@@ -101,7 +101,10 @@ exports.getCampaigns = async (req, res) => {
   let queryText = `
     SELECT c.*, u.full_name as creator_name, u.organization_name,
       (SELECT COUNT(*)::int FROM campaign_volunteers cv WHERE cv.campaign_id = c.campaign_id AND cv.registration_status = 'Approved') as volunteer_count
-      ${user_id ? `, EXISTS(SELECT 1 FROM campaign_volunteers cv2 WHERE cv2.campaign_id = c.campaign_id AND cv2.volunteer_id = $1) as is_joined, (SELECT registration_status FROM campaign_volunteers cv3 WHERE cv3.campaign_id = c.campaign_id AND cv3.volunteer_id = $1 LIMIT 1) as registration_status` : ''}
+      ${user_id ? `, 
+        EXISTS(SELECT 1 FROM campaign_volunteers cv2 WHERE cv2.campaign_id = c.campaign_id AND cv2.volunteer_id = $1 AND cv2.registration_status = 'Approved') as is_joined,
+        EXISTS(SELECT 1 FROM campaign_volunteers cv2 WHERE cv2.campaign_id = c.campaign_id AND cv2.volunteer_id = $1) as is_registered,
+        (SELECT registration_status FROM campaign_volunteers cv3 WHERE cv3.campaign_id = c.campaign_id AND cv3.volunteer_id = $1 LIMIT 1) as registration_status` : ''}
     FROM cleanup_campaigns c
     JOIN users u ON c.created_by = u.user_id
     WHERE 1=1
@@ -111,12 +114,6 @@ exports.getCampaigns = async (req, res) => {
   if (status) {
     params.push(status);
     queryText += ` AND c.status = $${params.length}`;
-  }
-
-  if (user_id) {
-    queryText += ` AND (c.visibility = 'Public' OR c.created_by = $1 OR EXISTS(SELECT 1 FROM campaign_volunteers cv4 WHERE cv4.campaign_id = c.campaign_id AND cv4.volunteer_id = $1))`;
-  } else {
-    queryText += ` AND c.visibility = 'Public'`;
   }
 
   queryText += ' ORDER BY c.campaign_date DESC';
@@ -187,7 +184,14 @@ exports.joinCampaign = async (req, res) => {
 
   try {
     // Check if campaign exists and status is upcoming/ongoing
-    const campaignResult = await db.query('SELECT status, maximum_volunteers, visibility FROM cleanup_campaigns WHERE campaign_id = $1', [campaign_id]);
+    const campaignResult = await db.query(
+      `SELECT c.status, c.maximum_volunteers, c.visibility, c.campaign_name, c.location, c.campaign_date, c.created_by,
+              COALESCE(u.organization_name, u.full_name, 'the NGO') as organizer_name
+       FROM cleanup_campaigns c
+       JOIN users u ON c.created_by = u.user_id
+       WHERE c.campaign_id = $1`,
+      [campaign_id]
+    );
     if (campaignResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campaign not found.' });
     }
@@ -199,17 +203,29 @@ exports.joinCampaign = async (req, res) => {
 
     // Check volunteer count limit
     if (campaign.maximum_volunteers) {
-      const countResult = await db.query('SELECT COUNT(*) FROM campaign_volunteers WHERE campaign_id = $1', [campaign_id]);
+      const countResult = await db.query('SELECT COUNT(*) FROM campaign_volunteers WHERE campaign_id = $1 AND registration_status = \'Approved\'', [campaign_id]);
       const currentVolunteers = parseInt(countResult.rows[0].count);
       if (currentVolunteers >= campaign.maximum_volunteers) {
         return res.status(400).json({ error: 'Campaign has reached its maximum volunteer capacity.' });
       }
     }
 
-    // Check if already joined
-    const checkResult = await db.query('SELECT id FROM campaign_volunteers WHERE campaign_id = $1 AND volunteer_id = $2', [campaign_id, volunteer_id]);
+    // Check if already registered
+    const checkResult = await db.query('SELECT id, registration_status FROM campaign_volunteers WHERE campaign_id = $1 AND volunteer_id = $2', [campaign_id, volunteer_id]);
     if (checkResult.rows.length > 0) {
-      return res.status(400).json({ error: 'You have already registered for this campaign.', is_joined: true });
+      const existingStatus = checkResult.rows[0].registration_status;
+      if (existingStatus === 'Pending') {
+        return res.status(400).json({ 
+          error: `Your request to join this campaign is already pending approval from ${campaign.organizer_name}.`,
+          registration_status: 'Pending',
+          is_joined: false
+        });
+      }
+      return res.status(400).json({ 
+        error: 'You have already registered for this campaign.', 
+        registration_status: existingStatus,
+        is_joined: existingStatus === 'Approved'
+      });
     }
 
     // Insert volunteer record
@@ -219,27 +235,34 @@ exports.joinCampaign = async (req, res) => {
       [campaign_id, volunteer_id, regStatus]
     );
 
+    const volunteerName = req.user.full_name || 'A citizen';
+
     // In-app Notification to Volunteer
-    const notifMsg = campaign.visibility === 'Private' ? 'Your request to join the campaign is pending approval.' : 'You have successfully registered for the cleanup campaign drive.';
+    const notifMsg = campaign.visibility === 'Private'
+      ? `Your join request for "${campaign.campaign_name}" was sent to ${campaign.organizer_name} and is awaiting approval.`
+      : 'You have successfully registered for the cleanup campaign drive.';
     await db.query(
       `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
        VALUES ($1, 'Campaign Registration', $2, 'CleanupCampaign', $3)`,
       [volunteer_id, notifMsg, campaign_id]
     );
 
-    // Notify Municipal Authorities and Campaign Creator about volunteer joining
-    const volunteerName = req.user.full_name || 'A volunteer';
-    const campDetailsQuery = await db.query('SELECT campaign_name, location, campaign_date, created_by FROM cleanup_campaigns WHERE campaign_id = $1', [campaign_id]);
-    if (campDetailsQuery.rows.length > 0) {
-      const camp = campDetailsQuery.rows[0];
-      const campDateStr = new Date(camp.campaign_date).toLocaleDateString();
-      const joinMsg = `${volunteerName} has joined the cleanup campaign "${camp.campaign_name}" scheduled for ${campDateStr} at ${camp.location}.`;
-
+    // Notify Organizer (NGO/Authority)
+    if (campaign.visibility === 'Private') {
+      const requestMsg = `${volunteerName} requested to join your private cleanup campaign "${campaign.campaign_name}". Please review and approve in Campaign Details.`;
+      await db.query(
+        `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+         VALUES ($1, 'Private Campaign Join Request', $2, 'Campaign', $3)`,
+        [campaign.created_by, requestMsg, campaign_id]
+      );
+    } else {
+      const campDateStr = new Date(campaign.campaign_date).toLocaleDateString();
+      const joinMsg = `${volunteerName} has joined the cleanup campaign "${campaign.campaign_name}" scheduled for ${campDateStr} at ${campaign.location}.`;
       await db.query(
         `INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
          SELECT user_id, 'Volunteer Joined Campaign', $1, 'Campaign', $2
          FROM users WHERE role IN ('Authority', 'Admin') OR user_id = $3`,
-        [joinMsg, campaign_id, camp.created_by]
+        [joinMsg, campaign_id, campaign.created_by]
       );
     }
 
@@ -247,19 +270,29 @@ exports.joinCampaign = async (req, res) => {
     if (req.user && req.user.email) {
       sendEmail({
         to: req.user.email,
-        subject: `TerraMarine - Campaign Registration Confirmed`,
+        subject: campaign.visibility === 'Private' ? `TerraMarine - Campaign Join Request Submitted` : `TerraMarine - Campaign Registration Confirmed`,
         html: `
           <div style="font-family: Arial, sans-serif; padding: 20px; color: #0f172a;">
-            <h2 style="color: #0284c7;">ðŸŒŠ TerraMarine Cleanup Registration</h2>
+            <h2 style="color: #0284c7;">🌊 TerraMarine Cleanup Campaign</h2>
             <p>Dear <strong>${req.user.full_name}</strong>,</p>
-            <p>Your registration for the coastal cleanup drive has been confirmed!</p>
+            <p>${campaign.visibility === 'Private' 
+              ? `Your join request for <strong>"${campaign.campaign_name}"</strong> has been sent to <strong>${campaign.organizer_name}</strong>. You will be able to join once the NGO approves your request.` 
+              : `Your registration for <strong>"${campaign.campaign_name}"</strong> has been confirmed!`}</p>
             <p>Thank you for contributing to coastal ecosystem restoration.</p>
           </div>
         `
       }).catch(err => console.error('Email error:', err.message));
     }
 
-    res.status(201).json({ message: campaign.visibility === 'Private' ? 'Successfully requested to join campaign.' : 'Successfully registered for campaign.' });
+    const returnMessage = campaign.visibility === 'Private'
+      ? `Your join request is sent to ${campaign.organizer_name} and you can join only after NGO approve it.`
+      : 'Successfully registered for campaign.';
+
+    res.status(201).json({ 
+      message: returnMessage,
+      registration_status: regStatus,
+      is_joined: regStatus === 'Approved'
+    });
   } catch (error) {
     console.error('Join Campaign Error:', error);
     res.status(500).json({ error: 'Server error registering for campaign.' });
@@ -421,10 +454,12 @@ exports.getMyHistory = async (req, res) => {
       SELECT cv.id as registration_id, cv.joined_date, cv.attendance, cv.certificate_status,
              c.campaign_id, c.campaign_name, c.description, c.campaign_date, c.start_time, c.end_time, c.location, c.status as campaign_status,
              u.full_name as creator_name, u.organization_name,
+             vol.full_name as volunteer_name, vol.email as volunteer_email,
              cert.certificate_id, cert.certificate_url, cert.issued_date
       FROM campaign_volunteers cv
       JOIN cleanup_campaigns c ON cv.campaign_id = c.campaign_id
       JOIN users u ON c.created_by = u.user_id
+      JOIN users vol ON cv.volunteer_id = vol.user_id
       LEFT JOIN certificates cert ON (cert.volunteer_id = cv.volunteer_id AND cert.campaign_id = cv.campaign_id)
       WHERE cv.volunteer_id = $1
       ORDER BY cv.joined_date DESC

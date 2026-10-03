@@ -18,6 +18,7 @@ const uploadDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
+
 const secureUploadDir = path.join(uploadDir, 'secure');
 if (!fs.existsSync(secureUploadDir)) {
   fs.mkdirSync(secureUploadDir, { recursive: true });
@@ -78,16 +79,16 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
     const completedCount = await db.query("SELECT COUNT(*) FROM pollution_reports WHERE status = 'Completed'");
     const campaignsCount = await db.query("SELECT COUNT(*) FROM cleanup_campaigns WHERE status IN ('Upcoming', 'Ongoing')");
     const volunteersCount = await db.query("SELECT COUNT(*) FROM users WHERE role = 'Volunteer'");
-    
+
     // User-specific stats for dashboard activities
     const userActiveCount = await db.query("SELECT COUNT(*)::int FROM pollution_reports WHERE reported_by = $1 AND status != 'Completed'", [req.user.user_id]);
     const userResolvedCount = await db.query("SELECT COUNT(*)::int FROM pollution_reports WHERE reported_by = $1 AND status = 'Completed'", [req.user.user_id]);
-    
+
     // Fetch user district for nearby reports count
     const userDistrictResult = await db.query("SELECT district FROM users WHERE user_id = $1", [req.user.user_id]);
     const districtName = userDistrictResult.rows[0]?.district || 'Kochi';
     const userNearbyCount = await db.query("SELECT COUNT(*)::int FROM pollution_reports WHERE location_name ILIKE $1", [`%${districtName}%`]);
-    
+
     // Fetch campaigns joined count and their IDs
     const userCampaignsJoinedCount = await db.query("SELECT COUNT(*)::int FROM campaign_volunteers WHERE volunteer_id = $1", [req.user.user_id]);
     const userCampaignsJoinedIds = await db.query("SELECT campaign_id FROM campaign_volunteers WHERE volunteer_id = $1", [req.user.user_id]);

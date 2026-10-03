@@ -71,5 +71,3 @@ router.get('/test-email', authController.testEmail);
 router.post('/test-email', authController.testEmail);
 
 module.exports = router;
-
-

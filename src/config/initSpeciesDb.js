@@ -158,14 +158,30 @@ const initSpeciesDb = async () => {
       );
     `);
 
-    // 3. Seed initial species if empty
+    // 3. Ensure species approval workflow columns exist
+    await db.query(`
+      ALTER TABLE species_catalog ADD COLUMN IF NOT EXISTS approval_status VARCHAR(50) DEFAULT 'Approved';
+      ALTER TABLE species_catalog ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+      ALTER TABLE species_catalog ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users(user_id) ON DELETE SET NULL;
+      ALTER TABLE species_catalog ADD COLUMN IF NOT EXISTS reviewed_by_name VARCHAR(255);
+      ALTER TABLE species_catalog ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP WITH TIME ZONE;
+    `);
+
+    // Ensure all existing catalog rows have approval_status = 'Approved'
+    await db.query(`
+      UPDATE species_catalog 
+      SET approval_status = 'Approved' 
+      WHERE approval_status IS NULL;
+    `);
+
+    // 4. Seed initial species if empty
     const countRes = await db.query('SELECT COUNT(*)::int as count FROM species_catalog');
     if (countRes.rows[0].count === 0) {
       console.log('Seeding initial marine species catalog into PostgreSQL...');
       for (const sp of initialSpecies) {
         await db.query(`
-          INSERT INTO species_catalog (name, scientific_name, category, status, habitat, threats, sensitivity, notes, image)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          INSERT INTO species_catalog (name, scientific_name, category, status, habitat, threats, sensitivity, notes, image, approval_status)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Approved')
         `, [sp.name, sp.scientific_name, sp.category, sp.status, sp.habitat, sp.threats, sp.sensitivity, sp.notes, sp.image]);
       }
       console.log('Initial species catalog seeded successfully.');

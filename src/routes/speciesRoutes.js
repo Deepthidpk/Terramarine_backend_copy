@@ -40,17 +40,47 @@ router.delete(
   speciesController.deleteSpeciesCategory
 );
 
+// Specific routes before /:id parameter match
+router.get(
+  '/submissions', 
+  authMiddleware, 
+  requireRole(['Authority', 'Admin']), 
+  speciesController.getSpeciesSubmissions
+);
+
+router.get(
+  '/my-submissions', 
+  authMiddleware, 
+  speciesController.getMySubmissions
+);
+
 // Species Catalog endpoints
 router.get('/', speciesController.getAllSpecies);
 router.get('/:id', speciesController.getSpeciesById);
 
-// Create species: Authority, Admin, Researcher
+// Create / Submit species: Authority, Admin, Researcher
 router.post(
   '/', 
   authMiddleware, 
   requireRole(['Authority', 'Admin', 'Researcher']), 
   upload.single('image'), 
   speciesController.createSpecies
+);
+
+// Approve Species Submission: Authority, Admin
+router.put(
+  '/:id/approve',
+  authMiddleware,
+  requireRole(['Authority', 'Admin']),
+  speciesController.approveSpecies
+);
+
+// Reject Species Submission: Authority, Admin
+router.put(
+  '/:id/reject',
+  authMiddleware,
+  requireRole(['Authority', 'Admin']),
+  speciesController.rejectSpecies
 );
 
 // Update species: Authority, Admin, Researcher
