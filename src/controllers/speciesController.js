@@ -1,11 +1,177 @@
 const db = require('../config/db');
 
 // =========================================================================
-// 1. Species Catalog CRUD
+// 1. Species Catalog & Review Workflow
 // =========================================================================
 
-// Get all marine species
+// Get all marine species (Role-aware & status-filtered)
+// CRITICAL RULE: By default only APPROVED species are returned for public/researchers
 exports.getAllSpecies = async (req, res) => {
+  try {
+    const { approval_status, category, search } = req.query;
+    
+    let whereClauses = [];
+    let queryParams = [];
+
+    // Filter by approval status
+    if (approval_status && approval_status !== 'all') {
+      queryParams.push(approval_status);
+      whereClauses.push(`s.approval_status = $${queryParams.length}`);
+    } else if (!approval_status) {
+      // Default: Only return approved species
+      queryParams.push('Approved');
+      whereClauses.push(`COALESCE(s.approval_status, 'Approved') = $${queryParams.length}`);
+    }
+
+    // Filter by category
+    if (category && category !== 'All') {
+      queryParams.push(category);
+      whereClauses.push(`s.category = $${queryParams.length}`);
+    }
+
+    // Filter by search query
+    if (search && search.trim()) {
+      queryParams.push(`%${search.trim()}%`);
+      const pIdx = queryParams.length;
+      whereClauses.push(`(s.name ILIKE $${pIdx} OR s.scientific_name ILIKE $${pIdx} OR s.notes ILIKE $${pIdx})`);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const query = `
+      SELECT 
+        s.species_id as id,
+        s.species_id,
+        s.name,
+        s.scientific_name as "scientificName",
+        s.category,
+        s.status,
+        s.habitat,
+        s.threats,
+        s.sensitivity,
+        s.notes,
+        s.image,
+        COALESCE(s.approval_status, 'Approved') as approval_status,
+        s.rejection_reason,
+        s.reviewed_by,
+        s.reviewed_by_name,
+        s.reviewed_at,
+        s.created_by,
+        s.created_by_name,
+        s.created_at,
+        u.full_name as author_name,
+        u.email as author_email,
+        u.role as author_role
+      FROM species_catalog s
+      LEFT JOIN users u ON s.created_by = u.user_id
+      ${whereSql}
+      ORDER BY 
+        CASE WHEN s.approval_status = 'Pending' THEN 1 ELSE 2 END,
+        s.created_at DESC, 
+        s.species_id ASC
+    `;
+
+    const result = await db.query(query, queryParams);
+    res.json({ species: result.rows });
+  } catch (error) {
+    console.error('Get All Species Error:', error);
+    res.status(500).json({ error: 'Server error retrieving marine species catalog.' });
+  }
+};
+
+// Get all species submissions for Municipal Authority Review
+exports.getSpeciesSubmissions = async (req, res) => {
+  try {
+    const { status, category, search } = req.query;
+
+    let whereClauses = [];
+    let queryParams = [];
+
+    if (status && status !== 'all') {
+      queryParams.push(status);
+      whereClauses.push(`COALESCE(s.approval_status, 'Approved') = $${queryParams.length}`);
+    }
+
+    if (category && category !== 'All') {
+      queryParams.push(category);
+      whereClauses.push(`s.category = $${queryParams.length}`);
+    }
+
+    if (search && search.trim()) {
+      queryParams.push(`%${search.trim()}%`);
+      const pIdx = queryParams.length;
+      whereClauses.push(`(
+        s.name ILIKE $${pIdx} OR 
+        s.scientific_name ILIKE $${pIdx} OR 
+        s.created_by_name ILIKE $${pIdx} OR 
+        u.full_name ILIKE $${pIdx} OR 
+        u.email ILIKE $${pIdx}
+      )`);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const query = `
+      SELECT 
+        s.species_id as id,
+        s.species_id,
+        s.name,
+        s.scientific_name as "scientificName",
+        s.category,
+        s.status,
+        s.habitat,
+        s.threats,
+        s.sensitivity,
+        s.notes,
+        s.image,
+        COALESCE(s.approval_status, 'Approved') as approval_status,
+        s.rejection_reason,
+        s.reviewed_by,
+        s.reviewed_by_name,
+        s.reviewed_at,
+        s.created_by,
+        s.created_by_name,
+        s.created_at,
+        u.full_name as author_name,
+        u.email as author_email,
+        u.role as author_role
+      FROM species_catalog s
+      LEFT JOIN users u ON s.created_by = u.user_id
+      ${whereSql}
+      ORDER BY 
+        CASE WHEN s.approval_status = 'Pending' THEN 1 ELSE 2 END,
+        s.created_at DESC
+    `;
+
+    const result = await db.query(query, queryParams);
+
+    // Compute stats
+    const statsQuery = await db.query(`
+      SELECT 
+        COUNT(*)::int as total,
+        COUNT(CASE WHEN COALESCE(approval_status, 'Approved') = 'Pending' THEN 1 END)::int as pending,
+        COUNT(CASE WHEN COALESCE(approval_status, 'Approved') = 'Approved' THEN 1 END)::int as approved,
+        COUNT(CASE WHEN COALESCE(approval_status, 'Approved') = 'Rejected' THEN 1 END)::int as rejected
+      FROM species_catalog
+    `);
+
+    res.json({ 
+      submissions: result.rows,
+      stats: statsQuery.rows[0]
+    });
+  } catch (error) {
+    console.error('Get Species Submissions Error:', error);
+    res.status(500).json({ error: 'Server error retrieving species submissions.' });
+  }
+};
+
+// Get Researcher's own species submissions
+exports.getMySubmissions = async (req, res) => {
+  const userId = req.user?.user_id;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
   try {
     const result = await db.query(`
       SELECT 
@@ -20,19 +186,20 @@ exports.getAllSpecies = async (req, res) => {
         s.sensitivity,
         s.notes,
         s.image,
-        s.created_by,
-        s.created_by_name,
-        s.created_at,
-        u.full_name as author_name,
-        u.role as author_role
+        COALESCE(s.approval_status, 'Approved') as approval_status,
+        s.rejection_reason,
+        s.reviewed_by_name,
+        s.reviewed_at,
+        s.created_at
       FROM species_catalog s
-      LEFT JOIN users u ON s.created_by = u.user_id
-      ORDER BY s.species_id ASC
-    `);
-    res.json({ species: result.rows });
+      WHERE s.created_by = $1
+      ORDER BY s.created_at DESC
+    `, [userId]);
+
+    res.json({ submissions: result.rows });
   } catch (error) {
-    console.error('Get All Species Error:', error);
-    res.status(500).json({ error: 'Server error retrieving marine species catalog.' });
+    console.error('Get My Submissions Error:', error);
+    res.status(500).json({ error: 'Server error retrieving your species submissions.' });
   }
 };
 
@@ -53,10 +220,17 @@ exports.getSpeciesById = async (req, res) => {
         s.sensitivity,
         s.notes,
         s.image,
+        COALESCE(s.approval_status, 'Approved') as approval_status,
+        s.rejection_reason,
+        s.reviewed_by,
+        s.reviewed_by_name,
+        s.reviewed_at,
         s.created_by,
         s.created_by_name,
         s.created_at,
-        u.full_name as author_name
+        u.full_name as author_name,
+        u.email as author_email,
+        u.role as author_role
       FROM species_catalog s
       LEFT JOIN users u ON s.created_by = u.user_id
       WHERE s.species_id = $1
@@ -73,7 +247,7 @@ exports.getSpeciesById = async (req, res) => {
   }
 };
 
-// Create / Add New Species (Authority, Researcher, Admin)
+// Create / Submit New Species (Authority, Researcher, Admin)
 exports.createSpecies = async (req, res) => {
   const {
     name,
@@ -131,8 +305,8 @@ exports.createSpecies = async (req, res) => {
     if (trimmedHabitat.length < 3) {
       return res.status(400).json({ error: 'Typical habitat must be at least 3 characters long.' });
     }
-    if (trimmedHabitat.length > 300) {
-      return res.status(400).json({ error: 'Typical habitat cannot exceed 300 characters.' });
+    if (trimmedHabitat.length > 500) {
+      return res.status(400).json({ error: 'Typical habitat cannot exceed 500 characters.' });
     }
   }
 
@@ -142,8 +316,8 @@ exports.createSpecies = async (req, res) => {
     if (trimmedThreats.length < 3) {
       return res.status(400).json({ error: 'Anthropogenic threats must be at least 3 characters long.' });
     }
-    if (trimmedThreats.length > 300) {
-      return res.status(400).json({ error: 'Anthropogenic threats cannot exceed 300 characters.' });
+    if (trimmedThreats.length > 500) {
+      return res.status(400).json({ error: 'Anthropogenic threats cannot exceed 500 characters.' });
     }
   }
 
@@ -153,8 +327,8 @@ exports.createSpecies = async (req, res) => {
     if (trimmedNotes.length < 5) {
       return res.status(400).json({ error: 'Research field notes must be at least 5 characters long.' });
     }
-    if (trimmedNotes.length > 1000) {
-      return res.status(400).json({ error: 'Research field notes cannot exceed 1000 characters.' });
+    if (trimmedNotes.length > 2000) {
+      return res.status(400).json({ error: 'Research field notes cannot exceed 2000 characters.' });
     }
   }
 
@@ -164,13 +338,18 @@ exports.createSpecies = async (req, res) => {
   }
 
   const userId = req.user?.user_id || null;
-  const userName = req.user?.full_name || req.user?.name || 'Authority Administrator';
+  const userRole = req.user?.role || 'Researcher';
+  const userName = req.user?.full_name || req.user?.name || 'Researcher';
+
+  // If uploaded by Researcher, set status to 'Pending' for Municipal Authority approval
+  // If uploaded directly by Authority or Admin, set status to 'Approved'
+  const initialApprovalStatus = ['Authority', 'Admin'].includes(userRole) ? 'Approved' : 'Pending';
 
   try {
     const query = `
       INSERT INTO species_catalog 
-      (name, scientific_name, category, status, habitat, threats, sensitivity, notes, image, created_by, created_by_name)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      (name, scientific_name, category, status, habitat, threats, sensitivity, notes, image, created_by, created_by_name, approval_status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING 
         species_id as id,
         species_id,
@@ -183,36 +362,220 @@ exports.createSpecies = async (req, res) => {
         sensitivity,
         notes,
         image,
+        approval_status,
         created_by,
         created_by_name,
         created_at
     `;
     const values = [
-      name.trim(),
-      finalScientificName.trim(),
-      category.trim(),
+      trimmedName,
+      finalScientificName,
+      trimmedCat,
       status || 'Least Concern',
-      habitat || null,
-      threats || null,
+      trimmedHabitat || null,
+      trimmedThreats || null,
       sensitivity || 'Medium',
-      notes || null,
+      trimmedNotes || null,
       imageUrl,
       userId,
-      userName
+      userName,
+      initialApprovalStatus
     ];
 
     const result = await db.query(query, values);
+
+    // If researcher submitted, notify municipal authorities
+    if (initialApprovalStatus === 'Pending') {
+      try {
+        const authorities = await db.query("SELECT user_id FROM users WHERE role = 'Authority' OR role = 'Admin'");
+        for (const authUser of authorities.rows) {
+          await db.query(`
+            INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [
+            authUser.user_id,
+            'New Species Submitted for Review',
+            `Researcher ${userName} has submitted new species details for "${trimmedName}" (${finalScientificName}) awaiting your approval.`,
+            'Species_Submission',
+            result.rows[0].species_id
+          ]);
+        }
+      } catch (notifErr) {
+        console.warn('Could not dispatch authority notifications:', notifErr.message);
+      }
+    }
+
+    const message = initialApprovalStatus === 'Pending'
+      ? 'Species details submitted successfully! Awaiting Municipal Authority review and approval.'
+      : 'Marine species registered and published to live catalog successfully!';
+
     res.status(201).json({ 
-      message: 'Marine species registered successfully!', 
+      message, 
       species: result.rows[0] 
     });
   } catch (error) {
     console.error('Create Species Error:', error);
-    res.status(500).json({ error: 'Server error registering new species.' });
+    res.status(500).json({ error: 'Server error registering species.' });
   }
 };
 
-// Update Species
+// Approve Species Submission (Municipal Authority, Admin)
+exports.approveSpecies = async (req, res) => {
+  const { id } = req.params;
+  const reviewerId = req.user?.user_id;
+  const reviewerName = req.user?.full_name || 'Municipal Authority Administrator';
+
+  try {
+    const check = await db.query('SELECT * FROM species_catalog WHERE species_id = $1', [id]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Species submission record not found.' });
+    }
+
+    const species = check.rows[0];
+
+    const updateQuery = `
+      UPDATE species_catalog 
+      SET 
+        approval_status = 'Approved',
+        rejection_reason = NULL,
+        reviewed_by = $1,
+        reviewed_by_name = $2,
+        reviewed_at = CURRENT_TIMESTAMP
+      WHERE species_id = $3
+      RETURNING 
+        species_id as id,
+        species_id,
+        name,
+        scientific_name as "scientificName",
+        category,
+        status,
+        habitat,
+        threats,
+        sensitivity,
+        notes,
+        image,
+        approval_status,
+        rejection_reason,
+        reviewed_by,
+        reviewed_by_name,
+        reviewed_at,
+        created_by,
+        created_by_name,
+        created_at
+    `;
+
+    const result = await db.query(updateQuery, [reviewerId, reviewerName, id]);
+
+    // Send notification to the researcher who submitted it
+    if (species.created_by) {
+      try {
+        await db.query(`
+          INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [
+          species.created_by,
+          'Species Submission Approved! 🎉',
+          `Your species submission for "${species.name}" (${species.scientific_name}) has been approved by the Municipal Authority and is now published in the Species Explorer catalog.`,
+          'Species_Approved',
+          id
+        ]);
+      } catch (notifErr) {
+        console.warn('Notification error on species approval:', notifErr.message);
+      }
+    }
+
+    res.json({
+      message: `Species "${species.name}" has been approved and published to the Researcher Species Explorer.`,
+      species: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Approve Species Error:', error);
+    res.status(500).json({ error: 'Server error approving species.' });
+  }
+};
+
+// Reject Species Submission (Municipal Authority, Admin)
+exports.rejectSpecies = async (req, res) => {
+  const { id } = req.params;
+  const { reason, rejection_reason } = req.body;
+  const reviewerId = req.user?.user_id;
+  const reviewerName = req.user?.full_name || 'Municipal Authority Administrator';
+
+  const feedback = (reason || rejection_reason || '').trim();
+  if (!feedback) {
+    return res.status(400).json({ error: 'Please provide a reason or constructive feedback for rejecting this species submission.' });
+  }
+
+  try {
+    const check = await db.query('SELECT * FROM species_catalog WHERE species_id = $1', [id]);
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Species submission record not found.' });
+    }
+
+    const species = check.rows[0];
+
+    const updateQuery = `
+      UPDATE species_catalog 
+      SET 
+        approval_status = 'Rejected',
+        rejection_reason = $1,
+        reviewed_by = $2,
+        reviewed_by_name = $3,
+        reviewed_at = CURRENT_TIMESTAMP
+      WHERE species_id = $4
+      RETURNING 
+        species_id as id,
+        species_id,
+        name,
+        scientific_name as "scientificName",
+        category,
+        status,
+        habitat,
+        threats,
+        sensitivity,
+        notes,
+        image,
+        approval_status,
+        rejection_reason,
+        reviewed_by,
+        reviewed_by_name,
+        reviewed_at,
+        created_by,
+        created_by_name,
+        created_at
+    `;
+
+    const result = await db.query(updateQuery, [feedback, reviewerId, reviewerName, id]);
+
+    // Send notification to the researcher who submitted it
+    if (species.created_by) {
+      try {
+        await db.query(`
+          INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [
+          species.created_by,
+          'Species Submission Update: Revision Required',
+          `Your species submission for "${species.name}" was reviewed by the Municipal Authority with feedback: "${feedback}".`,
+          'Species_Rejected',
+          id
+        ]);
+      } catch (notifErr) {
+        console.warn('Notification error on species rejection:', notifErr.message);
+      }
+    }
+
+    res.json({
+      message: `Species submission "${species.name}" marked as rejected with feedback provided.`,
+      species: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Reject Species Error:', error);
+    res.status(500).json({ error: 'Server error rejecting species.' });
+  }
+};
+
+// Update Species (Authority, Admin)
 exports.updateSpecies = async (req, res) => {
   const { id } = req.params;
   const {
@@ -225,10 +588,14 @@ exports.updateSpecies = async (req, res) => {
     threats,
     sensitivity,
     notes,
-    image_url
+    image_url,
+    approval_status
   } = req.body;
 
   const finalScientificName = scientific_name || scientificName;
+
+  const userRole = req.user?.role || 'Researcher';
+  const userName = req.user?.full_name || req.user?.name || 'Researcher';
 
   try {
     const check = await db.query('SELECT * FROM species_catalog WHERE species_id = $1', [id]);
@@ -236,12 +603,22 @@ exports.updateSpecies = async (req, res) => {
       return res.status(404).json({ error: 'Species record not found.' });
     }
 
-    let imageUrl = check.rows[0].image;
+    const currentSpecies = check.rows[0];
+
+    let imageUrl = currentSpecies.image;
     if (req.file) {
       imageUrl = `/uploads/${req.file.filename}`;
-    } else if (image_url !== undefined) {
+    } else if (image_url !== undefined && image_url !== '') {
       imageUrl = image_url;
     }
+
+    const newApprovalStatus = ['Authority', 'Admin'].includes(userRole)
+      ? (approval_status || currentSpecies.approval_status || 'Approved')
+      : 'Pending';
+
+    const newRejectionReason = ['Authority', 'Admin'].includes(userRole)
+      ? currentSpecies.rejection_reason
+      : null; // Clear rejection reason when researcher resubmits
 
     const query = `
       UPDATE species_catalog 
@@ -254,8 +631,10 @@ exports.updateSpecies = async (req, res) => {
         threats = COALESCE($6, threats),
         sensitivity = COALESCE($7, sensitivity),
         notes = COALESCE($8, notes),
-        image = COALESCE($9, image)
-      WHERE species_id = $10
+        image = COALESCE($9, image),
+        approval_status = $10,
+        rejection_reason = $11
+      WHERE species_id = $12
       RETURNING 
         species_id as id,
         species_id,
@@ -268,6 +647,11 @@ exports.updateSpecies = async (req, res) => {
         sensitivity,
         notes,
         image,
+        approval_status,
+        rejection_reason,
+        reviewed_by,
+        reviewed_by_name,
+        reviewed_at,
         created_by,
         created_by_name,
         created_at
@@ -277,18 +661,47 @@ exports.updateSpecies = async (req, res) => {
       finalScientificName ? finalScientificName.trim() : null,
       category ? category.trim() : null,
       status || null,
-      habitat || null,
-      threats || null,
+      habitat ? habitat.trim() : null,
+      threats ? threats.trim() : null,
       sensitivity || null,
-      notes || null,
+      notes ? notes.trim() : null,
       imageUrl,
+      newApprovalStatus,
+      newRejectionReason,
       id
     ];
 
     const result = await db.query(query, values);
+    const updated = result.rows[0];
+
+    // If researcher updated, notify authorities for review
+    if (userRole === 'Researcher') {
+      try {
+        const authorities = await db.query("SELECT user_id FROM users WHERE role = 'Authority' OR role = 'Admin'");
+        for (const authUser of authorities.rows) {
+          await db.query(`
+            INSERT INTO notifications (user_id, title, message, reference_type, reference_id)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [
+            authUser.user_id,
+            'Species Submission Updated',
+            `Researcher ${userName} has updated details for "${updated.name}" (${updated.scientificName}) awaiting review.`,
+            'Species_Submission',
+            id
+          ]);
+        }
+      } catch (notifErr) {
+        console.warn('Could not dispatch authority notifications:', notifErr.message);
+      }
+    }
+
+    const message = userRole === 'Researcher'
+      ? 'Species details updated successfully! Awaiting Municipal Authority review and approval.'
+      : 'Marine species updated successfully!';
+
     res.json({ 
-      message: 'Marine species updated successfully!', 
-      species: result.rows[0] 
+      message, 
+      species: updated 
     });
   } catch (error) {
     console.error('Update Species Error:', error);
@@ -306,7 +719,7 @@ exports.deleteSpecies = async (req, res) => {
     }
 
     await db.query('DELETE FROM species_catalog WHERE species_id = $1', [id]);
-    res.json({ message: 'Marine species deleted from catalog successfully.' });
+    res.json({ message: 'Marine species submission removed successfully.' });
   } catch (error) {
     console.error('Delete Species Error:', error);
     res.status(500).json({ error: 'Server error deleting species.' });

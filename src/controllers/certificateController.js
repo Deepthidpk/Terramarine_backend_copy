@@ -7,11 +7,13 @@ exports.getMyCertificates = async (req, res) => {
   try {
     const queryText = `
       SELECT cert.certificate_id, cert.certificate_url, cert.issued_date,
-             c.campaign_id, c.campaign_name, c.description, c.campaign_date, c.location,
+             c.campaign_id, c.campaign_name, c.description, c.campaign_date, c.start_time, c.end_time, c.location,
+             vol.full_name as volunteer_name, vol.email as volunteer_email,
              u.full_name as creator_name, u.organization_name
       FROM certificates cert
       JOIN cleanup_campaigns c ON cert.campaign_id = c.campaign_id
       JOIN users u ON c.created_by = u.user_id
+      JOIN users vol ON cert.volunteer_id = vol.user_id
       WHERE cert.volunteer_id = $1
       ORDER BY cert.issued_date DESC
     `;
@@ -30,7 +32,7 @@ exports.getCertificateById = async (req, res) => {
   try {
     const queryText = `
       SELECT cert.certificate_id, cert.certificate_url, cert.issued_date,
-             c.campaign_id, c.campaign_name, c.description, c.campaign_date, c.location,
+             c.campaign_id, c.campaign_name, c.description, c.campaign_date, c.start_time, c.end_time, c.location,
              vol.full_name as volunteer_name, vol.email as volunteer_email,
              org.full_name as creator_name, org.organization_name
       FROM certificates cert

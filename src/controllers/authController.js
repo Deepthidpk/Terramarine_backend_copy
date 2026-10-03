@@ -19,8 +19,8 @@ const generateToken = (user) => {
 
 // 1. Standard Register
 exports.register = async (req, res) => {
-  const { 
-    full_name, email, phone, password, role, 
+  const {
+    full_name, email, phone, password, role,
     organization_name, address, district, state,
     registration_number, organization_address,
     institution_name, department, research_area,
@@ -173,14 +173,14 @@ exports.register = async (req, res) => {
       RETURNING user_id, full_name, email, role, status, created_at
     `;
     const values = [
-      full_name, email, phone || null, passwordHash, role, 
+      full_name, email, phone || null, passwordHash, role,
       organization_name || null, address || null, district || null, state || null, status,
       registration_number || null, organization_address || null, registration_certificate_url,
       institution_name || null, department || null, research_area || null, institution_id_url,
       government_id_type || null, government_id_number || null, government_id_url,
       fishing_license_number || null, boat_registration_number || null
     ];
-    
+
     const result = await db.query(insertQuery, values);
     const newUser = result.rows[0];
 
@@ -202,7 +202,7 @@ exports.register = async (req, res) => {
     }).catch(err => console.error('Welcome email dispatch warning:', err.message));
 
     if (status === 'Pending') {
-      res.status(201).json({ 
+      res.status(201).json({
         message: 'Your registration has been submitted successfully and is awaiting administrator approval.',
         status: 'Pending',
         user: {
@@ -493,7 +493,7 @@ exports.googleLogin = async (req, res) => {
 
 // 4. Complete Google Registration for New Users with Selected Role & Documents
 exports.googleRegister = async (req, res) => {
-  const { 
+  const {
     full_name, email, google_id, profile_image, role, phone,
     address, district, state,
     organization_name, registration_number, organization_address,
@@ -663,7 +663,7 @@ exports.forgotPassword = async (req, res) => {
       html: emailHtml,
     });
 
-    res.json({ 
+    res.json({
       message: `Password reset link has been sent to ${email}. Please check your inbox and spam folder.`
     });
   } catch (error) {
@@ -818,4 +818,3 @@ exports.testEmail = async (req, res) => {
     res.status(500).json({ error: 'Failed to send test email', details: err.message });
   }
 };
-

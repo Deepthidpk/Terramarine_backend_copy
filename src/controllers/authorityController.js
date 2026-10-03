@@ -132,9 +132,9 @@ exports.updateDistrictUserStatus = async (req, res) => {
       [req.user.user_id, req.user.email, 'AUTHORITY_USER_STATUS_CHANGE', `Changed user ${id} status to ${status}`]
     );
 
-    res.json({ 
-      message: `User status updated to ${status} successfully.`, 
-      user: result.rows[0] 
+    res.json({
+      message: `User status updated to ${status} successfully.`,
+      user: result.rows[0]
     });
   } catch (error) {
     console.error('Update District User Status Error:', error);
